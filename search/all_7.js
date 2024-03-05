@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['info_18',['info',['../classSkeletonizer3D.html#a80db51859f10dbdd25646efebf568368',1,'Skeletonizer3D']]]
+  ['kind_19',['kind',['../classSkeletonizer3D.html#ab22fc0957754b80d63c55b685d7b9deb',1,'Skeletonizer3D']]]
 ];
