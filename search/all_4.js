@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['get_5foutput_16',['get_output',['../classSkeletonizer3D.html#a4c10b2d239cff21bb354f4f5085fd11d',1,'Skeletonizer3D']]]
+  ['dummy_16',['dummy',['../classFilter.html#a29bce8d312ef763d7beb39f13851d9d3',1,'Filter::dummy()'],['../classSource.html#a504d988ace793cf47a4301151ebdf570',1,'Source::dummy()']]]
 ];

@@ -1,7 +1,4 @@
 var searchData=
 [
-  ['set_5fparams_44',['set_params',['../classSkeletonizer3D.html#a39b7a6ab1fc2c465cdf1dad535ee1816',1,'Skeletonizer3D']]],
-  ['skeleton_5ffrom_5fdepth_5fcompute_45',['skeleton_from_depth_compute',['../classSkeletonizer3D.html#a939aa6becf171195eb601e90503bdab3',1,'Skeletonizer3D']]],
-  ['skeleton_5ffrom_5frgb_5fcompute_46',['skeleton_from_rgb_compute',['../classSkeletonizer3D.html#ad3c31b638e6d841eff55b590d03fddda',1,'Skeletonizer3D']]],
-  ['skeletonizer3d_47',['Skeletonizer3D',['../classSkeletonizer3D.html#a9a2f0359889c381d7f7d9d2b9ca1a53f',1,'Skeletonizer3D']]]
+  ['kind_52',['kind',['../classFilter.html#a91a969919077f3ecade055db183676ea',1,'Filter::kind()'],['../classSkeletonizer3D.html#ab22fc0957754b80d63c55b685d7b9deb',1,'Skeletonizer3D::kind()'],['../classSource.html#afc952efdbef1cbee52db276b276defa0',1,'Source::kind()']]]
 ];

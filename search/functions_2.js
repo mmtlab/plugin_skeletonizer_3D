@@ -1,4 +1,5 @@
 var searchData=
 [
-  ['get_5foutput_39',['get_output',['../classSkeletonizer3D.html#a4c10b2d239cff21bb354f4f5085fd11d',1,'Skeletonizer3D']]]
+  ['cov3d_5fadjust_46',['cov3D_adjust',['../classSkeletonizer3D.html#abaf31189d6df8a08f9ea92f0ab203801',1,'Skeletonizer3D']]],
+  ['cov3d_5ffrom_5fcov2d_5fcompute_47',['cov3D_from_cov2D_compute',['../classSkeletonizer3D.html#a79a8019da53f9aef2f461d168ac858e0',1,'Skeletonizer3D']]]
 ];
