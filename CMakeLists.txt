@@ -114,18 +114,31 @@ include_directories(
   ${json_SOURCE_DIR}/include
 )
 
+if(WIN32)
+  set( CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}" ${CMAKE_MODULE_PATH} )
+endif()
 
 # TARGETS ######################################################################
 # add_plugin(echo)
 # add_plugin(echoj)
 # add_plugin(twice)
 # add_plugin(clock)
-add_plugin(skeletonizer3D LIBS ${OpenCV_LIBS})
+# add_plugin(skeletonizer3D LIBS ${OpenCV_LIBS})
+
+if(WIN32)
+  find_package( k4a REQUIRED )
+  find_package( k4abt REQUIRED )
+endif()
+
+if( k4a_FOUND AND k4abt_FOUND)
+  add_plugin(skeletonizer3D LIBS ${OpenCV_LIBS} k4a::k4a k4a::k4abt)
+else()
+  add_plugin(skeletonizer3D LIBS ${OpenCV_LIBS})
+endif()
 
 # add_loader(loader)
 # add_loader(load_filter)
 add_loader(load_source)
-
 
 # INSTALL ######################################################################
 set(CMAKE_INSTALL_PREFIX ${USR_DIR})
