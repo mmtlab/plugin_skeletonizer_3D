@@ -75,8 +75,7 @@ public:
 
     const clock_t begin_time = clock();
     // acquire and translate into _rgb and _rgbd
-    k4a::capture sensor_capture;
-    if (_device.get_capture(&sensor_capture, std::chrono::milliseconds(K4A_WAIT_INFINITE)))
+    if (_device.get_capture(&_k4a_rgbd, std::chrono::milliseconds(K4A_WAIT_INFINITE)))
     {
       if(debug)
         cout << "Capture time: " << float( clock () - begin_time ) /  CLOCKS_PER_SEC << " s" << endl;
@@ -85,7 +84,7 @@ public:
       return return_type::error;
 
     // acquire and store into _rgb (RGB) and _rgbd (RGBD), if available
-    k4a::image colorImage = sensor_capture.get_color_image();
+    k4a::image colorImage = _k4a_rgbd.get_color_image();
     
     // from k4a::image to cv::Mat --> color image
     if (colorImage != NULL)
@@ -110,7 +109,7 @@ public:
       }
     }
 
-    k4a::image depthImage = sensor_capture.get_depth_image();
+    k4a::image depthImage = _k4a_rgbd.get_depth_image();
 
     // from k4a::image to cv::Mat --> depth image
     if (colorImage != NULL)
@@ -367,7 +366,7 @@ protected:
   Mat _cov3D_adj;        /**< the adjusted 3D covariance matrix */
   json _params;          /**< the parameters of the plugin */
 #ifdef KINECT_AZURE
-  k4a_capture_t _k4a_rgbd; /**< the last capture */
+  k4a::capture _k4a_rgbd; /**< the last capture */
   k4a::device _device;
   k4abt::tracker _tracker;
 #endif
