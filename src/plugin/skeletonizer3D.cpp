@@ -8,6 +8,7 @@
 
 #include <assert.h>
 #include <iostream>
+#include <time.h>
 
 #include "../source.hpp"
 #include <nlohmann/json.hpp>
@@ -65,19 +66,76 @@ public:
    * @return result status ad defined in return_type
    */
   return_type acquire_frame(bool debug = false) {
-// acquire last frame from the camera device
-// if camera device is a Kinect Azure, use the Azure SDK
-// and translate the frame in OpenCV format
-#ifdef KINECT_AZURE
-// acquire and translate into _rgb and _rgbd
-   k4a::capture sensor_capture;
-   if (_device.get_capture(&sensor_capture, std::chrono::milliseconds(K4A_WAIT_INFINITE)))
-  {
-    cout << "Done to get a capture" << endl;
-  }
-#else
-// acquire and store into _rgb (RGB) and _rgbd (RGBD), if available
-#endif
+    // acquire last frame from the camera device
+    // if camera device is a Kinect Azure, use the Azure SDK
+    // and translate the frame in OpenCV format
+
+    #ifdef KINECT_AZURE
+
+
+    const clock_t begin_time = clock();
+    // acquire and translate into _rgb and _rgbd
+    k4a::capture sensor_capture;
+    if (_device.get_capture(&sensor_capture, std::chrono::milliseconds(K4A_WAIT_INFINITE)))
+    {
+      if(debug)
+        cout << "Capture time: " << float( clock () - begin_time ) /  CLOCKS_PER_SEC << " s" << endl;
+    }
+    else
+      return return_type::error;
+
+    // acquire and store into _rgb (RGB) and _rgbd (RGBD), if available
+    k4a::image colorImage = sensor_capture.get_color_image();
+    
+    // from k4a::image to cv::Mat --> color image
+    if (colorImage != NULL)
+    {
+      if(debug){
+        // you can check the format with this function
+        k4a_image_format_t format = colorImage.get_format(); // K4A_IMAGE_FORMAT_COLOR_BGRA32 
+        cout << "rgb format: " << format << endl;
+      }
+
+      // get raw buffer
+      uint8_t* buffer = colorImage.get_buffer();
+
+      // convert the raw buffer to cv::Mat
+      int rows = colorImage.get_height_pixels();
+      int cols = colorImage.get_width_pixels();
+      _rgb = cv::Mat(rows , cols, CV_8UC4, (void*)buffer, cv::Mat::AUTO_STEP);
+
+      if(debug){
+        imshow("rgb", _rgb);
+        waitKey(0);
+      }
+    }
+
+    k4a::image depthImage = sensor_capture.get_depth_image();
+
+    // from k4a::image to cv::Mat --> depth image
+    if (colorImage != NULL)
+    {
+      if(debug){
+        // you can check the format with this function
+        k4a_image_format_t format = depthImage.get_format(); // K4A_IMAGE_FORMAT_COLOR_BGRA32 
+        cout << "rgbd format: " << format << endl;
+      }
+
+      // get raw buffer
+      uint8_t* buffer = depthImage.get_buffer();
+
+      // convert the raw buffer to cv::Mat
+      int rows = depthImage.get_height_pixels();
+      int cols = depthImage.get_width_pixels();
+      _rgbd = cv::Mat(rows , cols, CV_16U, (void*)buffer, cv::Mat::AUTO_STEP);
+      
+      if(debug){
+        imshow("rgbd", _rgbd);
+        waitKey(0);
+      }
+    }
+    #endif
+    
     return return_type::success;
   }
 
@@ -208,21 +266,41 @@ public:
    * @param params
    */
   void set_params(void *params) override { 
-    _params = *(json *)params; 
+    _params = *(json *)params;
 
     #ifdef KINECT_AZURE
-      k4a_device_configuration_t device_config = K4A_DEVICE_CONFIG_INIT_DISABLE_ALL;
-      device_config.depth_mode = K4A_DEPTH_MODE_NFOV_UNBINNED;
+      cout << "Setting Azure Kinect parameters..." << endl;
 
-      _device = k4a::device::open(_params["device"]);
+      k4a_device_configuration_t device_config = K4A_DEVICE_CONFIG_INIT_DISABLE_ALL;
+      device_config.color_format = K4A_IMAGE_FORMAT_COLOR_BGRA32; // <==== For Color image
+      device_config.color_resolution = K4A_COLOR_RESOLUTION_1080P;
+      device_config.depth_mode = K4A_DEPTH_MODE_NFOV_UNBINNED; // <==== For Depth image
+
+      if(_params.contains("device")){
+        _device_id = _params["device"];
+          cout << "   Camera id: " << _device_id << endl;
+      }
+      else {
+        cout << "   Camera id (default): " << _device_id << endl;
+      }
+
+      _device = k4a::device::open(_device_id);
       _device.start_cameras(&device_config);
 
       k4a::calibration sensor_calibration = _device.get_calibration(device_config.depth_mode, device_config.color_resolution);
+      cout << "   Camera calibrated!" << endl;
 
       k4abt_tracker_configuration_t trackerConfig = K4ABT_TRACKER_CONFIG_DEFAULT;
-      trackerConfig.processing_mode = K4ABT_TRACKER_PROCESSING_MODE_GPU_CUDA;
+      if(_params.contains("CUDA")){
+          cout << "   Body tracker CUDA processor enabled: " << _params["CUDA"] << endl;
+          if (_params["CUDA"] == true)
+            trackerConfig.processing_mode = K4ABT_TRACKER_PROCESSING_MODE_GPU_CUDA;
+      }
       _tracker = k4abt::tracker::create(sensor_calibration, trackerConfig);
+      cout << "   Body Tracker created!" << endl;
+
     #endif
+    cout << "Azure Kinect parameters set!" << endl;
   }
 
   /**
@@ -238,17 +316,17 @@ public:
   return_type get_output(json *out, vector<unsigned char> *blob) override {
     // call in sequence the methods to compute the skeleton (acquire_frame,
     // skeleton_from_depth_compute, etc.)
+
     acquire_frame(out->at("debug")["acquire_frame"]);
-    /*skeleton_from_depth_compute(
-        out->at("debug")["skeleton_from_depth_compute"]);
+    /*skeleton_from_depth_compute(out->at("debug")["skeleton_from_depth_compute"]);
     skeleton_from_rgb_compute(out->at("debug")["skeleton_from_rgb_compute"]);
     hessian_compute(out->at("debug")["hessian_compute"]);
     cov3D_compute(out->at("debug")["cov3D_compute"]);
     consistency_check(out->at("debug")["consistency_check"]);
     point_cloud_filter(out->at("debug")["point_cloud_filter"]);
-    coordinate_transfrom(out->at("debug")["coordinate_transfrom"]);
+    coordinate_transfrom(out->at("debug")["coordinate_transfrom"]);*/
     // store the output in the out parameter json and the point cloud in the
-    // blob parameter*/
+    // blob parameter
     return return_type::success;
   }
 
@@ -261,9 +339,9 @@ public:
    * @return a map with the information of the plugin
    */
   map<string, string> info() override {
-    map<string, string> info;
-    info["kind"] = kind();
-    return info;
+    map<string, string> m{};
+    m["device"] = to_string(_device_id);
+    return m;
   }
 
   /**
@@ -275,8 +353,9 @@ public:
   string kind() override { return PLUGIN_NAME; }
 
 protected:
-  Mat _rgbd; /**< the last RGBD frame */
-  Mat _rgb;  /**< the last RGB frame */
+  int _device_id = 0; /**< the device ID */
+  cv::Mat _rgbd; /**< the last RGBD frame */
+  cv::Mat _rgb;  /**< the last RGB frame */
   map<string, vector<unsigned char>>
       _skeleton2D; /**< the skeleton from 2D cameras only*/
   map<string, vector<unsigned char>>
@@ -307,14 +386,36 @@ Example of JSON parameters:
 }
 */
 
+/* Execute only if as standalone program. othrwise, the main is 
+  in the plugiung loader  "load_source.cpp"
+*/
 int main(int argc, char const *argv[]) {
-  Skeletonizer3D sk;
+  try {
 
-  json params = {{"device", "0"}};
-  sk.set_params(&params);
+    cout << "Skeletonizer3D Started!" << endl;
 
-  json output = {};
-  cout << (sk.get_output(&output, nullptr) == return_type::success)<< endl;
-  
+    Skeletonizer3D sk;
+
+    json output;
+    vector<unsigned char> blob;
+
+    json params = {
+      {"device", 0},
+      {"out_res", "800x450"}
+      };
+    sk.set_params(&params);
+
+    cout << "Params: " << endl;
+    for (auto &[k, v] : sk.info()) {
+      cout << k << ": " << v << endl;
+    }
+
+    sk.get_output(&output, &blob);
+
+  } catch (const std::exception &error) {
+    cerr << error.what() << endl;
+    return 1;
+  }
+
   return 0;
 }
