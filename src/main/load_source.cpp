@@ -77,19 +77,6 @@ int main(int argc, char *argv[]) {
     cout << k << ": " << v << endl;
   }
 
-  out = {{
-    "debug", {
-      {"acquire_frame", true},
-      {"skeleton_from_depth_compute", false},
-      {"skeleton_from_rgb_compute", false},
-      {"hessian_compute", false},
-      {"cov3D_compute", false},
-      {"consistency_check", false},
-      {"point_cloud_filter", false},
-      {"coordinate_transfrom", false}
-    }}
-  };
-
   source->get_output(&out);
   cout << "Output: " << out << endl;
   delete source;

@@ -1,10 +1,14 @@
 {
-  "data": {
-    "a": 1,
-    "b": 2,
-    "c": [1, 2, 3]
-  },
-  "params": {
-    "Name": "test"
+  "device": 0,
+  "CUDA": true,
+  "debug": {
+    "acquire_frame": false,
+    "skeleton_from_depth_compute": false,
+    "skeleton_from_rgb_compute": false,
+    "hessian_compute": false,
+    "cov3D_compute": false,
+    "consistency_check": false,
+    "point_cloud_filter": false,
+    "coordinate_transfrom": false
   }
 }

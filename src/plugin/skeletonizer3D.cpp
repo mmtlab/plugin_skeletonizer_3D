@@ -72,7 +72,6 @@ public:
 
     #ifdef KINECT_AZURE
 
-
     const clock_t begin_time = clock();
     // acquire and translate into _rgb and _rgbd
     if (_device.get_capture(&_k4a_rgbd, std::chrono::milliseconds(K4A_WAIT_INFINITE)))
@@ -104,8 +103,15 @@ public:
       _rgb = cv::Mat(rows , cols, CV_8UC4, (void*)buffer, cv::Mat::AUTO_STEP);
 
       if(debug){
-        imshow("rgb", _rgb);
-        waitKey(0);
+        cv::Mat rgb_flipped;
+        cv::flip(_rgb, rgb_flipped, 1);
+        imshow("rgb", rgb_flipped);
+
+        int key = cv::waitKey(1000.0 / 25 /2);
+        if (27 == key || 'q' == key || 'Q' == key) { // Esc
+          return return_type::error; //
+        }
+
       }
     }
 
@@ -129,8 +135,19 @@ public:
       _rgbd = cv::Mat(rows , cols, CV_16U, (void*)buffer, cv::Mat::AUTO_STEP);
       
       if(debug){
-        imshow("rgbd", _rgbd);
-        waitKey(0);
+        cv::Mat rgbd_flipped;
+        cv::flip(_rgbd, rgbd_flipped, 1);
+
+        rgbd_flipped.convertTo(rgbd_flipped, CV_8U, 255.0/3000); // 2000 is the maximum depth value
+        cv::Mat rgbd_flipped_color;
+        // Apply the colormap:
+        cv::applyColorMap(rgbd_flipped, rgbd_flipped_color, cv::COLORMAP_HSV);
+        imshow("rgbd", rgbd_flipped_color);
+
+        int key = cv::waitKey(1000.0 / 25 /2);
+        if (27 == key || 'q' == key || 'Q' == key) { // Esc
+          return return_type::error; //
+        }
       }
     }
     #endif
@@ -315,15 +332,15 @@ public:
   return_type get_output(json *out, vector<unsigned char> *blob) override {
     // call in sequence the methods to compute the skeleton (acquire_frame,
     // skeleton_from_depth_compute, etc.)
-
-    acquire_frame(out->at("debug")["acquire_frame"]);
-    /*skeleton_from_depth_compute(out->at("debug")["skeleton_from_depth_compute"]);
-    skeleton_from_rgb_compute(out->at("debug")["skeleton_from_rgb_compute"]);
-    hessian_compute(out->at("debug")["hessian_compute"]);
-    cov3D_compute(out->at("debug")["cov3D_compute"]);
-    consistency_check(out->at("debug")["consistency_check"]);
-    point_cloud_filter(out->at("debug")["point_cloud_filter"]);
-    coordinate_transfrom(out->at("debug")["coordinate_transfrom"]);*/
+    
+    acquire_frame(_params["debug"]["acquire_frame"]);
+    /*skeleton_from_depth_compute(_params.at("debug")["skeleton_from_depth_compute"]);
+    skeleton_from_rgb_compute(_params.at("debug")["skeleton_from_rgb_compute"]);
+    hessian_compute(_params.at("debug")["hessian_compute"]);
+    cov3D_compute(_params.at("debug")["cov3D_compute"]);
+    consistency_check(_params.at("debug")["consistency_check"]);
+    point_cloud_filter(_params.at("debug")["point_cloud_filter"]);
+    coordinate_transfrom(_params.at("debug")["coordinate_transfrom"]);*/
     // store the output in the out parameter json and the point cloud in the
     // blob parameter
     return return_type::success;
@@ -339,7 +356,8 @@ public:
    */
   map<string, string> info() override {
     map<string, string> m{};
-    m["device"] = to_string(_device_id);
+    m["device"] = to_string(_params["device"]);
+    m["debug"] = _params["debug"].dump();
     return m;
   }
 
