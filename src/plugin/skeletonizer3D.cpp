@@ -26,6 +26,10 @@
   // include Kinect libraries
   #include <k4a/k4a.hpp>
   #include <k4abt.hpp>
+  #include <BodyTrackingHelpers.h>
+  #include <Utilities.h>
+  #include <Window3dWrapper.h>
+
 #endif
 
 using namespace cv;
@@ -115,30 +119,52 @@ public:
       }
     }
 
-    k4a::image depthImage = _k4a_rgbd.get_depth_image();
+    k4a::image depth_image = _k4a_rgbd.get_depth_image();
 
     // from k4a::image to cv::Mat --> depth image
     if (colorImage != NULL)
     {
       if(debug){
         // you can check the format with this function
-        k4a_image_format_t format = depthImage.get_format(); // K4A_IMAGE_FORMAT_COLOR_BGRA32 
+        k4a_image_format_t format = depth_image.get_format(); // K4A_IMAGE_FORMAT_COLOR_BGRA32 
         cout << "rgbd format: " << format << endl;
       }
 
       // get raw buffer
-      uint8_t* buffer = depthImage.get_buffer();
+      uint8_t* buffer = depth_image.get_buffer();
 
       // convert the raw buffer to cv::Mat
-      int rows = depthImage.get_height_pixels();
-      int cols = depthImage.get_width_pixels();
+      int rows = depth_image.get_height_pixels();
+      int cols = depth_image.get_width_pixels();
       _rgbd = cv::Mat(rows , cols, CV_16U, (void*)buffer, cv::Mat::AUTO_STEP);
       
       if(debug){
         cv::Mat rgbd_flipped;
         cv::flip(_rgbd, rgbd_flipped, 1);
 
-        rgbd_flipped.convertTo(rgbd_flipped, CV_8U, 255.0/3000); // 2000 is the maximum depth value
+        // Configure the colormap range based on the depth mode
+        // Values get from: https://docs.microsoft.com/en-us/azure/kinect-dk/hardware-specification
+        int max_depth;
+        switch (_device_config.depth_mode)
+        {
+        case K4A_DEPTH_MODE_NFOV_UNBINNED:
+          max_depth = 3860;
+          break;
+        case K4A_DEPTH_MODE_NFOV_2X2BINNED:
+          max_depth = 5460;
+          break;
+        case K4A_DEPTH_MODE_WFOV_UNBINNED:
+          max_depth = 2210;
+          break;
+        case K4A_DEPTH_MODE_WFOV_2X2BINNED:
+          max_depth = 2880;
+          break;
+
+        default:
+          max_depth = 3860;
+          break;
+        }
+        rgbd_flipped.convertTo(rgbd_flipped, CV_8U, 255.0/max_depth); // 2000 is the maximum depth value
         cv::Mat rgbd_flipped_color;
         // Apply the colormap:
         cv::applyColorMap(rgbd_flipped, rgbd_flipped_color, cv::COLORMAP_HSV);
@@ -168,6 +194,54 @@ public:
    */
   return_type skeleton_from_depth_compute(bool debug = false) {
 #ifdef KINECT_AZURE
+
+    cout << "Skeleton from depth compute... STARTED" << endl;
+
+    if (!_tracker.enqueue_capture(_k4a_rgbd))
+    {
+        // It should never hit timeout when K4A_WAIT_INFINITE is set.
+        std::cout << "Error! Add capture to tracker process queue timeout!" << std::endl;
+        return return_type::error;
+    }
+
+    _body_frame = _tracker.pop_result();
+    if (_body_frame != nullptr)
+    {
+      uint32_t num_bodies = _body_frame.get_num_bodies();
+      std::cout << num_bodies << " bodies are detected!" << std::endl;
+
+      if(debug){
+
+        cout << "Skeleton from depth compute... DEBUG MODE" << endl;
+
+        // Print the body information
+        for (uint32_t i = 0; i < num_bodies; i++)
+        {
+          k4abt_body_t body = _body_frame.get_body(i);
+          print_body_information(body);
+        }
+
+        // Visualize the result on the 3D window
+        /*int depth_width = _sensor_calibration.depth_camera_calibration.resolution_width;
+        int depth_height = _sensor_calibration.depth_camera_calibration.resolution_height;
+        
+        VisualizeResult(_body_frame, _window3d, depth_width, depth_height);
+            
+        _body_frame.reset();
+
+        _window3d.SetLayout3d(Visualization::Layout3d::OnlyMainView);
+        _window3d.SetJointFrameVisualization(true);
+        _window3d.Render();*/
+
+      }
+    }
+    else
+    {
+      //  It should never hit timeout when K4A_WAIT_INFINITE is set.
+      cout << "Error! Pop body frame result time out!" << endl;
+      return return_type::error;
+    }
+
     return return_type::success;
 #else
     // NOOP
@@ -263,6 +337,124 @@ public:
     return return_type::success;
   }
 
+/* UTILITY FUNCTIONS ========================================================*/
+// Utility functions for the debug of the Azure Kinect Skeletonizer3D plugin
+  void print_body_information(k4abt_body_t body)
+{
+  std::cout << "Body ID: " << body.id << std::endl;
+  for (int i = 0; i < (int)K4ABT_JOINT_COUNT; i++)
+  {
+      k4a_float3_t position = body.skeleton.joints[i].position;
+      k4a_quaternion_t orientation = body.skeleton.joints[i].orientation;
+      k4abt_joint_confidence_level_t confidence_level = body.skeleton.joints[i].confidence_level;
+      printf("Joint[%d]: Position[mm] ( %f, %f, %f ); Orientation ( %f, %f, %f, %f); Confidence Level (%d)  \n",
+          i, position.v[0], position.v[1], position.v[2], orientation.v[0], orientation.v[1], orientation.v[2], orientation.v[3], confidence_level);
+  }
+}
+
+void print_body_index_map_middle_line(k4a::image body_index_map)
+{
+  uint8_t* body_index_map_buffer = body_index_map.get_buffer();
+
+  // Given body_index_map pixel type should be uint8, the stride_byte should be the same as width
+  // TODO: Since there is no API to query the byte-per-pixel information, we have to compare the width and stride to
+  // know the information. We should replace this assert with proper byte-per-pixel query once the API is provided by
+  // K4A SDK.
+  assert(body_index_map.get_stride_bytes() == body_index_map.get_width_pixels());
+
+  int middle_line_num = body_index_map.get_height_pixels() / 2;
+  body_index_map_buffer = body_index_map_buffer + middle_line_num * body_index_map.get_width_pixels();
+
+  std::cout << "body_index_map at Line " << middle_line_num << ":" << std::endl;
+  for (int i = 0; i < body_index_map.get_width_pixels(); i++)
+  {
+      std::cout << (int)*body_index_map_buffer << ", ";
+      body_index_map_buffer++;
+  }
+  std::cout << std::endl;
+}
+
+void VisualizeResult(k4abt::frame body_frame, Window3dWrapper& window3d, int depth_width, int depth_height) {
+
+    // Obtain original capture that generates the body tracking result
+    k4a::capture original_capture = body_frame.get_capture();
+    k4a::image depth_image = original_capture.get_depth_image();
+
+    std::vector<Color> point_cloud_colors(depth_width * depth_height, { 1.f, 1.f, 1.f, 1.f });
+
+    // Read body index map and assign colors
+    k4a::image body_index_map = body_frame.get_body_index_map();
+    const uint8_t* body_index_map_buffer = body_index_map.get_buffer();
+    for (int i = 0; i < depth_width * depth_height; i++)
+    {
+        uint8_t body_index = body_index_map_buffer[i];
+        if (body_index != K4ABT_BODY_INDEX_MAP_BACKGROUND)
+        {
+            uint32_t bodyId = body_frame.get_body_id(body_index);
+            point_cloud_colors[i] = g_bodyColors[bodyId % g_bodyColors.size()];
+        }
+    }
+    body_index_map.reset();
+
+    k4a_image_t depth_image_t = depth_image.handle();
+
+    // Visualize point cloud
+    window3d.UpdatePointClouds(depth_image_t, point_cloud_colors);
+
+    // Visualize the skeleton data
+    window3d.CleanJointsAndBones();
+    uint32_t num_bodies = body_frame.get_num_bodies();
+    for (uint32_t i = 0; i < num_bodies; i++)
+    {
+        k4abt_body_t body;
+        body.id = body_frame.get_body_id(i);
+
+        // Assign the correct color based on the body id
+        Color color = g_bodyColors[body.id % g_bodyColors.size()];
+        color.a = 0.4f;
+        Color low_confidence_color = color;
+        low_confidence_color.a = 0.1f;
+
+        // Visualize joints
+        for (int joint = 0; joint < static_cast<int>(K4ABT_JOINT_COUNT); joint++)
+        {
+            if (body.skeleton.joints[joint].confidence_level >= K4ABT_JOINT_CONFIDENCE_LOW)
+            {
+                const k4a_float3_t& jointPosition = body.skeleton.joints[joint].position;
+                const k4a_quaternion_t& jointOrientation = body.skeleton.joints[joint].orientation;
+
+                window3d.AddJoint(
+                    jointPosition,
+                    jointOrientation,
+                    body.skeleton.joints[joint].confidence_level >= K4ABT_JOINT_CONFIDENCE_MEDIUM ? color : low_confidence_color);
+            }
+        }
+
+        // Visualize bones
+        for (size_t boneIdx = 0; boneIdx < g_boneList.size(); boneIdx++)
+        {
+            k4abt_joint_id_t joint1 = g_boneList[boneIdx].first;
+            k4abt_joint_id_t joint2 = g_boneList[boneIdx].second;
+
+            if (body.skeleton.joints[joint1].confidence_level >= K4ABT_JOINT_CONFIDENCE_LOW &&
+                body.skeleton.joints[joint2].confidence_level >= K4ABT_JOINT_CONFIDENCE_LOW)
+            {
+                bool confidentBone = body.skeleton.joints[joint1].confidence_level >= K4ABT_JOINT_CONFIDENCE_MEDIUM &&
+                    body.skeleton.joints[joint2].confidence_level >= K4ABT_JOINT_CONFIDENCE_MEDIUM;
+                const k4a_float3_t& joint1Position = body.skeleton.joints[joint1].position;
+                const k4a_float3_t& joint2Position = body.skeleton.joints[joint2].position;
+
+                window3d.AddBone(joint1Position, joint2Position, confidentBone ? color : low_confidence_color);
+            }
+        }
+    }
+
+    original_capture.reset();
+    depth_image.reset();
+
+}
+
+
   /*
     ____  _             _             _          __  __
    |  _ \| |_   _  __ _(_)_ __    ___| |_ _   _ / _|/ _|
@@ -287,10 +479,10 @@ public:
     #ifdef KINECT_AZURE
       cout << "Setting Azure Kinect parameters..." << endl;
 
-      k4a_device_configuration_t device_config = K4A_DEVICE_CONFIG_INIT_DISABLE_ALL;
-      device_config.color_format = K4A_IMAGE_FORMAT_COLOR_BGRA32; // <==== For Color image
-      device_config.color_resolution = K4A_COLOR_RESOLUTION_1080P;
-      device_config.depth_mode = K4A_DEPTH_MODE_NFOV_UNBINNED; // <==== For Depth image
+      _device_config = K4A_DEVICE_CONFIG_INIT_DISABLE_ALL;
+      _device_config.color_format = K4A_IMAGE_FORMAT_COLOR_BGRA32; // <==== For Color image
+      _device_config.color_resolution = K4A_COLOR_RESOLUTION_1080P;
+      _device_config.depth_mode = K4A_DEPTH_MODE_NFOV_UNBINNED; // <==== For Depth image
 
       if(_params.contains("device")){
         _device_id = _params["device"];
@@ -301,19 +493,28 @@ public:
       }
 
       _device = k4a::device::open(_device_id);
-      _device.start_cameras(&device_config);
+      _device.start_cameras(&_device_config);
 
-      k4a::calibration sensor_calibration = _device.get_calibration(device_config.depth_mode, device_config.color_resolution);
+      _sensor_calibration = _device.get_calibration(_device_config.depth_mode, _device_config.color_resolution);
       cout << "   Camera calibrated!" << endl;
 
-      k4abt_tracker_configuration_t trackerConfig = K4ABT_TRACKER_CONFIG_DEFAULT;
+      _trackerConfig = K4ABT_TRACKER_CONFIG_DEFAULT;
       if(_params.contains("CUDA")){
           cout << "   Body tracker CUDA processor enabled: " << _params["CUDA"] << endl;
           if (_params["CUDA"] == true)
-            trackerConfig.processing_mode = K4ABT_TRACKER_PROCESSING_MODE_GPU_CUDA;
+            _trackerConfig.processing_mode = K4ABT_TRACKER_PROCESSING_MODE_GPU_CUDA;
       }
-      _tracker = k4abt::tracker::create(sensor_calibration, trackerConfig);
+      _tracker = k4abt::tracker::create(_sensor_calibration, _trackerConfig);
       cout << "   Body Tracker created!" << endl;
+
+      if(_params.contains("debug")["skel_from_depth_compute"]){
+        if (_params["debug"]["skel_from_depth_compute"] == true)
+        {
+          // Initialize the 3d window controller
+          _window3d.Create("3D Visualization", _sensor_calibration);
+          cout << "   3D window created!" << endl;
+        }
+      }
 
     #endif
     cout << "Azure Kinect parameters set!" << endl;
@@ -334,8 +535,8 @@ public:
     // skeleton_from_depth_compute, etc.)
     
     acquire_frame(_params["debug"]["acquire_frame"]);
-    /*skeleton_from_depth_compute(_params.at("debug")["skeleton_from_depth_compute"]);
-    skeleton_from_rgb_compute(_params.at("debug")["skeleton_from_rgb_compute"]);
+    skeleton_from_depth_compute(_params.at("debug")["skeleton_from_depth_compute"]);
+    /*skeleton_from_rgb_compute(_params.at("debug")["skeleton_from_rgb_compute"]);
     hessian_compute(_params.at("debug")["hessian_compute"]);
     cov3D_compute(_params.at("debug")["cov3D_compute"]);
     consistency_check(_params.at("debug")["consistency_check"]);
@@ -385,8 +586,17 @@ protected:
   json _params;          /**< the parameters of the plugin */
 #ifdef KINECT_AZURE
   k4a::capture _k4a_rgbd; /**< the last capture */
-  k4a::device _device;
-  k4abt::tracker _tracker;
+  k4a_device_configuration_t _device_config; /**< the device configuration */
+  k4a::calibration _sensor_calibration; /**< the sensor calibration */
+  k4a::device _device; /**< the device */
+  k4abt_tracker_configuration_t _trackerConfig; /**< the tracker configuration */
+  k4abt::tracker _tracker; /**< the body tracker */
+
+  k4abt::frame _body_frame; /**< the body frame */
+
+  // Debug variables
+  Window3dWrapper _window3d; /**< the 3D window controller */
+
 #endif
 };
 
