@@ -17,24 +17,6 @@ set(CMAKE_INSTALL_PREFIX ${USR_DIR})
 set(FETCHCONTENT_QUIET OFF)
 
 # DEPENDENCIES #################################################################
-include(FetchContent)
-# pugg is for the plugin system
-FetchContent_Declare(pugg 
-  GIT_REPOSITORY https://github.com/pbosetti/pugg.git
-  GIT_TAG        1.0.2
-  GIT_SHALLOW    TRUE
-)
-# plugins deal with I/O as JSON objects
-set(BUILD_TESTING OFF CACHE INTERNAL "")
-set(JSON_BuildTests OFF CACHE INTERNAL "")
-FetchContent_Declare(json
-  GIT_REPOSITORY https://github.com/nlohmann/json.git
-  GIT_TAG        v3.11.3
-  GIT_SHALLOW    TRUE
-)
-FetchContent_MakeAvailable(pugg json)
-
-
 if(WIN32)
   # On Windows, we rely on env variables to find install paths
   if(NOT DEFINED ENV{OpenCV_DIR})
@@ -65,6 +47,29 @@ if (NOT OPENVINO_INCLUDE_DIR)
 else()
   message(STATUS "OpenVINO headers found at ${OPENVINO_INCLUDE_DIR}")
 endif()
+
+include(FetchContent)
+# pugg is for the plugin system
+FetchContent_Declare(pugg 
+  GIT_REPOSITORY https://github.com/pbosetti/pugg.git
+  GIT_TAG        1.0.2
+  GIT_SHALLOW    TRUE
+)
+# plugins deal with I/O as JSON objects
+set(BUILD_TESTING OFF CACHE INTERNAL "")
+set(JSON_BuildTests OFF CACHE INTERNAL "")
+FetchContent_Declare(json
+  GIT_REPOSITORY https://github.com/nlohmann/json.git
+  GIT_TAG        v3.11.3
+  GIT_SHALLOW    TRUE
+)
+FetchContent_Declare(eigen
+  GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
+  GIT_TAG 3.4.0
+  GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(pugg json eigen)
+
 
 
 # MACROS #######################################################################
@@ -106,23 +111,71 @@ if (APPLE)
 else()
   set(CMAKE_INSTALL_RPATH "\$ORIGIN/../lib;/usr/local/lib")
 endif()
+
+# OMZ common source files ######################################################
+set(COMMON ${SRC_DIR}/common)
+
+file(GLOB COMMON_SOURCES
+  ${COMMON}/models/src/*.cpp
+  ${COMMON}/monitors/src/*.cpp
+  ${COMMON}/pipelines/src/*.cpp
+  ${COMMON}/utils/src/*.cpp
+)
+file(GLOB COMMON_HEADERS
+  ${COMMON}/models/include/models/*.h
+  ${COMMON}/monitors/include/monitors/*.h
+  ${COMMON}/pipelines/include/pipelines/*.h
+  ${COMMON}/utils/include/utils/*.h*
+)
+# Remove items that depend on gflags (which we don't want)
+list(REMOVE_ITEM COMMON_SOURCES ${COMMON}/monitors/src/query_wrapper.cpp)
+list(REMOVE_ITEM COMMON_HEADERS ${COMMON}/monitors/src/query_wrapper.h)
+list(REMOVE_ITEM COMMON_SOURCES ${COMMON}/utils/src/args_helper.cpp)
+list(REMOVE_ITEM COMMON_HEADERS ${COMMON}/utils/include/utils/default_flags.hpp)
+# locally modified files
+list(APPEND COMMON_SOURCES ${SRC_DIR}/args_helper.cpp)
+list(APPEND COMMON_SOURCES ${SRC_DIR}/args_helper.cpp)
+
+# Add the include directories ##################################################
 include_directories(
   ${OpenCV_INCLUDE_DIRS}
   ${OPENVINO_INCLUDE_DIR}
   ${json_SOURCE_DIR}/include
+  ${COMMON}/models/include
+  ${COMMON}/monitors/include
+  ${COMMON}/pipelines/include
+  ${COMMON}/utils/include
 )
 
-
 # TARGETS ######################################################################
+
+add_library(common STATIC ${COMMON_SOURCES} ${COMMON_HEADERS})
+
 # add_plugin(echo)
 # add_plugin(echoj)
 # add_plugin(twice)
 # add_plugin(clock)
-add_plugin(skeletonizer3D LIBS ${OpenCV_LIBS})
+# add_loader(loader)
+# add_loader(load_filter)
+
+# add_plugin(echo)
+# add_plugin(echoj)
+# add_plugin(twice)
+# add_plugin(clock)
 
 # add_loader(loader)
 # add_loader(load_filter)
 add_loader(load_source)
+#add_plugin(quick LIBS common ${OpenCV_LIBS} openvino::runtime)
+add_plugin(skeletonizer3D LIBS common ${OpenCV_LIBS} openvino::runtime Eigen3::Eigen)
+
+# Download OpenPOSE models #####################################################
+set(MODEL_NAME "human-pose-estimation-0001" CACHE STRING "Model name (no extension)")
+if(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/models/${MODEL_NAME}.xml)
+  message(STATUS "Downloading OpenPOSE model")
+  file(DOWNLOAD https://storage.openvinotoolkit.org/repositories/open_model_zoo/2023.0/models_bin/1/${MODEL_NAME}/FP32/${MODEL_NAME}.xml ${CMAKE_CURRENT_SOURCE_DIR}/models/${MODEL_NAME}.xml)
+  file(DOWNLOAD https://storage.openvinotoolkit.org/repositories/open_model_zoo/2023.0/models_bin/1/${MODEL_NAME}/FP32/${MODEL_NAME}.bin ${CMAKE_CURRENT_SOURCE_DIR}/models/${MODEL_NAME}.bin)
+endif()
 
 
 # INSTALL ######################################################################

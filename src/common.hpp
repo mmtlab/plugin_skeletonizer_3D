@@ -56,5 +56,7 @@ enum class return_type {
   critical
 };
 
+typedef float data_t;
+
 
 #endif // COMMON_HPP
