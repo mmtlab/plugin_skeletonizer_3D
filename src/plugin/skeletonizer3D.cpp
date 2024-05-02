@@ -181,7 +181,7 @@ public:
   void setup_Pipeline() {
     // setup pipeline
     _pipeline =
-        new AsyncPipeline(move(_model),
+        new AsyncPipeline(std::move(_model),
                           ConfigFactory::getUserConfig(
                               _inference_device, _nireq, _nstreams, _nthreads),
                           _core);
