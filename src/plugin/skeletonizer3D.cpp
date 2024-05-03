@@ -102,12 +102,10 @@ class Skeletonizer3D : public Source<json> {
     if (!_result.poses.empty()) {
       if (_result.poses[0].keypoints.size() == HPEOpenPose::keypointsNumber) {
         limb_keypoints_ids.insert(limb_keypoints_ids.begin(),
-                                  begin(keypointsOP),
-                                  end(keypointsOP));
+                                  begin(keypointsOP), end(keypointsOP));
       } else {
         limb_keypoints_ids.insert(limb_keypoints_ids.begin(),
-                                  begin(keypointsAE),
-                                  end(keypointsAE));
+                                  begin(keypointsAE), end(keypointsAE));
       }
     }
     cv::Mat pane = output_img.clone();
@@ -124,10 +122,10 @@ class Skeletonizer3D : public Source<json> {
         data_t mean_x = (limb_keypoints.first.x + limb_keypoints.second.x) / 2;
         data_t mean_y = (limb_keypoints.first.y + limb_keypoints.second.y) / 2;
         cv::Point difference = limb_keypoints.first - limb_keypoints.second;
-        data_t length = sqrt(difference.x * difference.x +
-                                  difference.y * difference.y);
-        int angle = static_cast<int>(atan2(difference.y, difference.x) *
-                                     180 / CV_PI);
+        data_t length =
+            sqrt(difference.x * difference.x + difference.y * difference.y);
+        int angle =
+            static_cast<int>(atan2(difference.y, difference.x) * 180 / CV_PI);
         vector<cv::Point> polygon;
         cv::ellipse2Poly(cv::Point2d(mean_x, mean_y),
                          cv::Size2d(length / 2, stick_width), angle, 0, 360, 1,
@@ -156,6 +154,7 @@ public:
     if (!_cap.isOpened()) {
       throw invalid_argument("ERROR: Cannot open the video camera");
     }
+
     _cap >> _rgb;
     cv::Size resolution = _rgb.size();
     size_t found = _resolution_rgb.find("x");
@@ -163,17 +162,20 @@ public:
       resolution = cv::Size{
           stoi(_resolution_rgb.substr(0, found)),
           stoi(_resolution_rgb.substr(found + 1, _resolution_rgb.length()))};
+
       _output_transform = OutputTransform(_rgb.size(), resolution);
       resolution = _output_transform.computeResolution();
+
+      cv::resize(_rgb, _rgb, cv::Size(resolution.width, resolution.height));
     }
-    // cout << "Resolution: " << resolution << endl;
+
     _rgb_height = resolution.height; //_rgb.rows;
     _rgb_width = resolution.width;   //_rgb.cols;
   }
 
   void setup_OpenPoseModel() {
     // setup inference model
-    data_t aspect_ratio = _rgb.cols / static_cast<data_t>(_rgb.rows);
+    data_t aspect_ratio = _rgb_width / static_cast<data_t>(_rgb_height);
     _model.reset(new HPEOpenPose(_model_file, aspect_ratio, _tsize,
                                  static_cast<data_t>(_threshold), _layout));
   }
@@ -186,8 +188,7 @@ public:
                               _inference_device, _nireq, _nstreams, _nthreads),
                           _core);
     _frame_num = _pipeline->submitData(
-        ImageInputData(_rgb),
-        make_shared<ImageMetaData>(_rgb, _start_time));
+        ImageInputData(_rgb), make_shared<ImageMetaData>(_rgb, _start_time));
   }
 
   /**
@@ -208,17 +209,18 @@ public:
 #ifdef KINECT_AZURE
 // acquire and translate into _rgb and _rgbd
 #else
-  _start_time = chrono::steady_clock::now();
-  if (dummy) {
-    // TODO: load a file 
-    throw invalid_argument("ERROR: Dummy not implemented");
-  } else {
-    _cap >> _rgb;
-    if (_rgb.empty()) {
-      // Input stream is over
-      return return_type::error;
+    _start_time = chrono::steady_clock::now();
+    if (dummy) {
+      // TODO: load a file
+      throw invalid_argument("ERROR: Dummy not implemented");
+    } else {
+      _cap >> _rgb;
+      if (_rgb.empty()) {
+        // Input stream is over
+        return return_type::error;
+      }
+      cv::resize(_rgb, _rgb, cv::Size(_rgb_width, _rgb_height));
     }
-  }
 #endif
     return return_type::success;
   }
@@ -292,8 +294,7 @@ public:
   return_type skeleton_from_rgb_compute(bool debug = false) {
     if (_pipeline->isReadyToProcess()) {
       _frame_num = _pipeline->submitData(
-          ImageInputData(_rgb),
-          make_shared<ImageMetaData>(_rgb, _start_time));
+          ImageInputData(_rgb), make_shared<ImageMetaData>(_rgb, _start_time));
     } else {
       return return_type::warning;
     }

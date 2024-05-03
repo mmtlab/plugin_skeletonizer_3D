@@ -1,7 +1,7 @@
 {
     "device": 0,
     "model_file": "models/human-pose-estimation-0001.xml",
-    "resolution_rgb": "1280x720",
+    "resolution_rgb": "",
     "fps": 25,
     "dummy": false,
     "debug": {
