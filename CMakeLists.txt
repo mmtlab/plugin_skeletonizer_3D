@@ -163,7 +163,7 @@ if(WIN32)
 endif()
 
 if(k4a_FOUND AND k4abt_FOUND AND USE_KINECT_AZURE)
-  add_plugin(skeletonizer3D LIBS ${OpenCV_LIBS} k4a::k4a k4a::k4abt)
+  add_plugin(skeletonizer3D LIBS ${OpenCV_LIBS} k4a::k4a k4a::k4abt Eigen3::Eigen)
   target_compile_definitions(skeletonizer3D PRIVATE KINECT_AZURE)
 else()
   add_plugin(skeletonizer3D LIBS common ${OpenCV_LIBS} openvino::runtime Eigen3::Eigen)

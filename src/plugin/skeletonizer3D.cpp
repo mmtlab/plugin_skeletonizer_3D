@@ -61,12 +61,12 @@ map<int, string> keypoints_map = {
 class Skeletonizer3D : public Source<json> {
 
 /*
-  ____  _        _   _                                 _                   
- / ___|| |_ __ _| |_(_) ___   _ __ ___   ___ _ __ ___ | |__   ___ _ __ ___ 
+  ____  _        _   _                                 _
+ / ___|| |_ __ _| |_(_) ___   _ __ ___   ___ _ __ ___ | |__   ___ _ __ ___
  \___ \| __/ _` | __| |/ __| | '_ ` _ \ / _ \ '_ ` _ \| '_ \ / _ \ '__/ __|
   ___) | || (_| | |_| | (__  | | | | | |  __/ | | | | | |_) |  __/ |  \__ \
  |____/ \__\__,_|\__|_|\___| |_| |_| |_|\___|_| |_| |_|_.__/ \___|_|  |___/
-                                                                           
+
 */
 #ifndef KINECT_AZURE
   static cv::Mat renderHumanPose(HumanPoseResult &_result,
@@ -152,14 +152,14 @@ class Skeletonizer3D : public Source<json> {
   }
 #endif
 
-/*
-  __  __      _   _               _     
- |  \/  | ___| |_| |__   ___   __| |___ 
- | |\/| |/ _ \ __| '_ \ / _ \ / _` / __|
- | |  | |  __/ |_| | | | (_) | (_| \__ \
- |_|  |_|\___|\__|_| |_|\___/ \__,_|___/
-                                        
-*/
+  /*
+    __  __      _   _               _
+   |  \/  | ___| |_| |__   ___   __| |___
+   | |\/| |/ _ \ __| '_ \ / _ \ / _` / __|
+   | |  | |  __/ |_| | | | (_) | (_| \__ \
+   |_|  |_|\___|\__|_| |_|\___/ \__,_|___/
+
+  */
 
 public:
   // Constructor
@@ -445,6 +445,9 @@ public:
    * @return result status ad defined in return_type
    */
   return_type skeleton_from_rgb_compute(bool debug = false) {
+#ifdef KINECT_AZURE
+
+#else
     if (_pipeline->isReadyToProcess()) {
       _frame_num = _pipeline->submitData(
           ImageInputData(_rgb), make_shared<ImageMetaData>(_rgb, _start_time));
@@ -464,6 +467,7 @@ public:
     }
     _frames_processed++;
 
+#endif
     return return_type::success;
   }
 
@@ -477,7 +481,9 @@ public:
    * @return result status ad defined in return_type
    */
   return_type hessian_compute(bool debug = false) {
+#ifdef KINECT_AZURE
 
+#else
     // y -> rows
     // x -> cols
 
@@ -635,7 +641,7 @@ public:
         }
       }
     }
-
+#endif
     return return_type::success;
   }
 
@@ -733,6 +739,9 @@ public:
 
     acquire_frame(_dummy);
 
+#ifdef KINECT_AZURE
+
+#else
     skeleton_from_rgb_compute(_params["debug"]["skeleton_from_rgb_compute"]);
 
     if (!(_result)) {
@@ -763,6 +772,7 @@ public:
 
     // store the output in the out parameter json and the point cloud in the
     // blob parameter
+#endif
     return return_type::success;
   }
 
@@ -789,10 +799,10 @@ public:
   string kind() override { return PLUGIN_NAME; }
 
 protected:
-  Mat _rgbd;             /**< the last RGBD frame */
-  Mat _rgb;              /**< the last RGB frame */
+  Mat _rgbd; /**< the last RGBD frame */
+  Mat _rgb;  /**< the last RGB frame */
   map<string, vector<unsigned char>>
-      _skeleton2D;       /**< the skeleton from 2D cameras only*/
+      _skeleton2D; /**< the skeleton from 2D cameras only*/
   map<string, vector<unsigned char>>
       _skeleton3D;       /**< the skeleton from 3D cameras only*/
   vector<Mat> _heatmaps; /**< the joints heatmaps */
@@ -816,15 +826,14 @@ protected:
   int _camera_device = 0;
   data_t _fps = 25;
   string _resolution_rgb = "800x600";
-  int _rgb_height;                     /**< image size rows */
-  int _rgb_width;                      /**< image size cols */
+  int _rgb_height; /**< image size rows */
+  int _rgb_width;  /**< image size cols */
   vector<cv::Point2i> _keypoints_list;
   vector<cv::Point3f> _keypoints_cov;
   string _model_file;
   string _agent_id;
   VideoCapture _cap;
   chrono::steady_clock::time_point _start_time;
-  ov::Core _core;
 
 #ifdef KINECT_AZURE
   int _azure_device = 0;  /**< the azure device ID */
@@ -832,7 +841,8 @@ protected:
   k4a::device _device;
   k4abt::tracker _tracker;
   // k4a_capture_t _k4a_rgbd; /**< the last capture */
-#else 
+#else
+  ov::Core _core;
   unique_ptr<ResultBase> _result;
   OutputTransform _output_transform;
   unique_ptr<ModelBase> _model;
