@@ -178,14 +178,14 @@ if(k4a_FOUND AND k4abt_FOUND)
   add_plugin(skeletonizer3D LIBS ${OpenCV_LIBS} k4a::k4a k4a::k4abt)
   target_compile_definitions(skeletonizer3D PRIVATE KINECT_AZURE)
 else()
-  add_plugin(skeletonizer3D LIBS ${OpenCV_LIBS})
+  add_plugin(skeletonizer3D LIBS common ${OpenCV_LIBS} openvino::runtime Eigen3::Eigen)
 endif()
 
 # add_loader(loader)
 # add_loader(load_filter)
 add_loader(load_source)
 #add_plugin(quick LIBS common ${OpenCV_LIBS} openvino::runtime)
-add_plugin(skeletonizer3D LIBS common ${OpenCV_LIBS} openvino::runtime Eigen3::Eigen)
+
 
 # Download OpenPOSE models #####################################################
 set(MODEL_NAME "human-pose-estimation-0001" CACHE STRING "Model name (no extension)")
