@@ -48,8 +48,8 @@ using json = nlohmann::json;
 map<int, string> keypoints_map = {
     {0, "NOS_"},  {1, "NEC_"},  {2, "SHOR"},  {3, "ELBR"},  {4, "WRIR"},
     {5, "SHOL"},  {6, "ELBL"},  {7, "WRIL"},  {8, "HIPR"},  {9, "KNER"},
-    {10, "ANKR"}, {11, "HIPL"}, {12, "KNEL"}, {13, "ANKL"}, {14, "REye"},
-    {15, "LEye"}, {16, "EARR"}, {17, "EARL"}};
+    {10, "ANKR"}, {11, "HIPL"}, {12, "KNEL"}, {13, "ANKL"}, {14, "EYEL"},
+    {15, "EYEL"}, {16, "EARR"}, {17, "EARL"}};
 
 /**
  * @class Skeletonizer3D
