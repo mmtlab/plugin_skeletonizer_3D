@@ -15,6 +15,8 @@ set(USR_DIR ${CMAKE_CURRENT_LIST_DIR}/usr)
 set(SRC_DIR ${CMAKE_CURRENT_LIST_DIR}/src)
 set(CMAKE_INSTALL_PREFIX ${USR_DIR})
 set(FETCHCONTENT_QUIET OFF)
+option(USE_KINECT_AZURE "Use Kinect Azure cameras" ON)
+
 
 # DEPENDENCIES #################################################################
 if(WIN32)
@@ -147,27 +149,28 @@ include_directories(
   ${COMMON}/utils/include
 )
 
+if(WIN32)
+  set( CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}" ${CMAKE_MODULE_PATH} )
+endif()
+
 # TARGETS ######################################################################
 
 add_library(common STATIC ${COMMON_SOURCES} ${COMMON_HEADERS})
 
-# add_plugin(echo)
-# add_plugin(echoj)
-# add_plugin(twice)
-# add_plugin(clock)
-# add_loader(loader)
-# add_loader(load_filter)
+if(WIN32)
+  find_package(k4a)
+  find_package(k4abt)
+endif()
 
-# add_plugin(echo)
-# add_plugin(echoj)
-# add_plugin(twice)
-# add_plugin(clock)
+if(k4a_FOUND AND k4abt_FOUND AND USE_KINECT_AZURE)
+  add_plugin(skeletonizer3D LIBS ${OpenCV_LIBS} k4a::k4a k4a::k4abt)
+  target_compile_definitions(skeletonizer3D PRIVATE KINECT_AZURE)
+else()
+  add_plugin(skeletonizer3D LIBS common ${OpenCV_LIBS} openvino::runtime Eigen3::Eigen)
+endif()
 
-# add_loader(loader)
-# add_loader(load_filter)
 add_loader(load_source)
-#add_plugin(quick LIBS common ${OpenCV_LIBS} openvino::runtime)
-add_plugin(skeletonizer3D LIBS common ${OpenCV_LIBS} openvino::runtime Eigen3::Eigen)
+
 
 # Download OpenPOSE models #####################################################
 set(MODEL_NAME "human-pose-estimation-0001" CACHE STRING "Model name (no extension)")
@@ -176,7 +179,6 @@ if(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/models/${MODEL_NAME}.xml)
   file(DOWNLOAD https://storage.openvinotoolkit.org/repositories/open_model_zoo/2023.0/models_bin/1/${MODEL_NAME}/FP32/${MODEL_NAME}.xml ${CMAKE_CURRENT_SOURCE_DIR}/models/${MODEL_NAME}.xml)
   file(DOWNLOAD https://storage.openvinotoolkit.org/repositories/open_model_zoo/2023.0/models_bin/1/${MODEL_NAME}/FP32/${MODEL_NAME}.bin ${CMAKE_CURRENT_SOURCE_DIR}/models/${MODEL_NAME}.bin)
 endif()
-
 
 # INSTALL ######################################################################
 set(CMAKE_INSTALL_PREFIX ${USR_DIR})

@@ -6,31 +6,37 @@
  |____/|_|\_\___|_|\___|\__\___/|_| |_|_/___\___|_| |____/|____/
  */
 
-#include "../source.hpp"
-#include <nlohmann/json.hpp>
-#include <opencv2/core.hpp>
-#include <opencv2/opencv.hpp>
-#include <pugg/Kernel.h>
-
-#include <Eigen/Dense>
-#include <chrono>
-#include <fstream>
-#include <iostream>
-#include <models/hpe_model_openpose.h>
-#include <models/input_data.h>
-#include <nlohmann/json.hpp>
-#include <openvino/openvino.hpp>
-#include <pipelines/async_pipeline.h>
-#include <pipelines/metadata.h>
-#include <string>
-#include <utils/common.hpp>
-
 #ifndef PLUGIN_NAME
 #define PLUGIN_NAME "skeletonizer3D"
 #endif
 
+#ifdef _WIN32
+#define _USE_MATH_DEFINES
+#include <cmath>
+#endif
+
+#include "../source.hpp"
+#include <chrono>
+#include <fstream>
+#include <iostream>
+#include <string>
+#include <nlohmann/json.hpp>
+#include <pugg/Kernel.h>
+#include <opencv2/core.hpp>
+#include <opencv2/opencv.hpp>
+
 #ifdef KINECT_AZURE
 // include Kinect libraries
+#include <k4a/k4a.hpp>
+#include <k4abt.hpp>
+#else
+#include <models/hpe_model_openpose.h>
+#include <models/input_data.h>
+#include <openvino/openvino.hpp>
+#include <pipelines/async_pipeline.h>
+#include <pipelines/metadata.h>
+#include <utils/common.hpp>
+#include <Eigen/Dense>
 #endif
 
 using namespace cv;
@@ -40,11 +46,10 @@ using json = nlohmann::json;
 // Map of OpenPOSE keypoint names
 // TODO: update with Miroscic names
 map<int, string> keypoints_map = {
-    {0, "Nose"},   {1, "Neck"},      {2, "RShoulder"}, {3, "RElbow"},
-    {4, "RWrist"}, {5, "LShoulder"}, {6, "LElbow"},    {7, "LWrist"},
-    {8, "RHip"},   {9, "RKnee"},     {10, "RAnkle"},   {11, "LHip"},
-    {12, "LKnee"}, {13, "LAnkle"},   {14, "REye"},     {15, "LEye"},
-    {16, "REar"},  {17, "LEar"}};
+    {0, "NOS_"},  {1, "NEC_"},  {2, "SHOR"},  {3, "ELBR"},  {4, "WRIR"},
+    {5, "SHOL"},  {6, "ELBL"},  {7, "WRIL"},  {8, "HIPR"},  {9, "KNER"},
+    {10, "ANKR"}, {11, "HIPL"}, {12, "KNEL"}, {13, "ANKL"}, {14, "REye"},
+    {15, "LEye"}, {16, "EARR"}, {17, "EARL"}};
 
 /**
  * @class Skeletonizer3D
@@ -183,13 +188,48 @@ public:
   void setup_Pipeline() {
     // setup pipeline
     _pipeline =
-        new AsyncPipeline(move(_model),
+        new AsyncPipeline(std::move(_model),
                           ConfigFactory::getUserConfig(
                               _inference_device, _nireq, _nstreams, _nthreads),
                           _core);
     _frame_num = _pipeline->submitData(
         ImageInputData(_rgb), make_shared<ImageMetaData>(_rgb, _start_time));
   }
+
+#ifdef KINECT_AZURE
+  void setup_azure_kinect() {
+    k4a_device_configuration_t device_config =
+        K4A_DEVICE_CONFIG_INIT_DISABLE_ALL;
+    device_config.color_format =
+        K4A_IMAGE_FORMAT_COLOR_BGRA32; // <==== For Color image
+    device_config.color_resolution = K4A_COLOR_RESOLUTION_1080P;
+    device_config.depth_mode =
+        K4A_DEPTH_MODE_NFOV_UNBINNED; // <==== For Depth image
+
+    if (_params.contains("azure_device")) {
+      _azure_device = _params["azure_device"];
+      cout << "   Camera id: " << _azure_device << endl;
+    } else {
+      cout << "   Camera id (default): " << _azure_device << endl;
+    }
+
+    _device = k4a::device::open(_azure_device);
+    _device.start_cameras(&device_config);
+
+    k4a::calibration sensor_calibration = _device.get_calibration(
+        device_config.depth_mode, device_config.color_resolution);
+    cout << "   Camera calibrated!" << endl;
+
+    k4abt_tracker_configuration_t trackerConfig = K4ABT_TRACKER_CONFIG_DEFAULT;
+    if (_params.contains("CUDA")) {
+      cout << "   Body tracker CUDA processor enabled: " << _params["CUDA"]
+           << endl;
+      if (_params["CUDA"] == true)
+        trackerConfig.processing_mode = K4ABT_TRACKER_PROCESSING_MODE_GPU_CUDA;
+    }
+    _tracker = k4abt::tracker::create(sensor_calibration, trackerConfig);
+  }
+#endif
 
   /**
    * @brief Acquire a frame from a camera device. Camera ID is defined in the
@@ -207,7 +247,43 @@ public:
 // if camera device is a Kinect Azure, use the Azure SDK
 // and translate the frame in OpenCV format
 #ifdef KINECT_AZURE
-// acquire and translate into _rgb and _rgbd
+    // acquire and translate into _rgb and _rgbd
+    const clock_t begin_time = clock();
+    // acquire and translate into _rgb and _rgbd
+    if (_device.get_capture(&_k4a_rgbd,
+                            std::chrono::milliseconds(K4A_WAIT_INFINITE))) {
+      if (debug)
+        cout << "Capture time: " << float(clock() - begin_time) / CLOCKS_PER_SEC
+             << " s" << endl;
+    } else
+      return return_type::error;
+
+    // acquire and store into _rgb (RGB) and _rgbd (RGBD), if available
+    k4a::image colorImage = _k4a_rgbd.get_color_image();
+
+    // from k4a::image to cv::Mat --> color image
+    if (colorImage != NULL) {
+      // get raw buffer
+      uint8_t *buffer = colorImage.get_buffer();
+
+      // convert the raw buffer to cv::Mat
+      int rows = colorImage.get_height_pixels();
+      int cols = colorImage.get_width_pixels();
+      _rgb = cv::Mat(rows, cols, CV_8UC4, (void *)buffer, cv::Mat::AUTO_STEP);
+    }
+
+    k4a::image depthImage = _k4a_rgbd.get_depth_image();
+
+    // from k4a::image to cv::Mat --> depth image
+    if (colorImage != NULL) {
+      // get raw buffer
+      uint8_t *buffer = depthImage.get_buffer();
+
+      // convert the raw buffer to cv::Mat
+      int rows = depthImage.get_height_pixels();
+      int cols = depthImage.get_width_pixels();
+      _rgbd = cv::Mat(rows, cols, CV_16U, (void *)buffer, cv::Mat::AUTO_STEP);
+    }
 #else
     _start_time = chrono::steady_clock::now();
     if (dummy) {
@@ -238,6 +314,55 @@ public:
    */
   return_type skeleton_from_depth_compute(bool debug = false) {
 #ifdef KINECT_AZURE
+    cout << "Skeleton from depth compute... STARTED" << endl;
+
+    if (!_tracker.enqueue_capture(_k4a_rgbd)) {
+      // It should never hit timeout when K4A_WAIT_INFINITE is set.
+      std::cout << "Error! Add capture to tracker process queue timeout!"
+                << std::endl;
+      return return_type::error;
+    }
+
+    _body_frame = _tracker.pop_result();
+    if (_body_frame != nullptr) {
+      uint32_t num_bodies = _body_frame.get_num_bodies();
+      std::cout << num_bodies << " bodies are detected!" << std::endl;
+
+      if (debug) {
+
+        cout << "Skeleton from depth compute... DEBUG MODE" << endl;
+
+        cv::Mat rgb_flipped;
+        cv::flip(_rgb, rgb_flipped, 1);
+        imshow("rgb", rgb_flipped);
+
+        cv::Mat rgbd_flipped;
+        cv::flip(_rgbd, rgbd_flipped, 1);
+        rgbd_flipped.convertTo(rgbd_flipped, CV_8U,
+                               255.0 / 3000); // 2000 is the maximum depth value
+        cv::Mat rgbd_flipped_color;
+        // Apply the colormap:
+        cv::applyColorMap(rgbd_flipped, rgbd_flipped_color, cv::COLORMAP_HSV);
+        imshow("rgbd", rgbd_flipped_color);
+
+        int key =
+            cv::waitKey(1000.0 / 25); // da adattare con il frame rate attuale
+        if (27 == key || 'q' == key || 'Q' == key) { // Esc
+          return return_type::error;                 //
+        }
+
+        // Print the body information
+        for (uint32_t i = 0; i < num_bodies; i++) {
+          k4abt_body_t body = _body_frame.get_body(i);
+          print_body_information(body);
+        }
+      }
+    } else {
+      //  It should never hit timeout when K4A_WAIT_INFINITE is set.
+      cout << "Error! Pop body frame result time out!" << endl;
+      return return_type::error;
+    }
+
     return return_type::success;
 #else
     // NOOP
@@ -340,7 +465,7 @@ public:
 
       for (auto &keypoint :
            _poses[0].keypoints) { // if I have more than one person, I take the
-                                  // first with id[0]
+        // first with id[0]
 
         if (keypoint.x > _rgb_width) {
           keypoint.x = _rgb_width - 1;
@@ -531,8 +656,8 @@ public:
    */
   void set_params(void *params) override {
     _params = *(json *)params;
-    if (_params.contains("device")) {
-      _camera_device = _params["device"];
+    if (_params.contains("camera_device")) {
+      _camera_device = _params["camera_device"];
     }
 
     if (_params.contains("model_file")) {
@@ -556,6 +681,10 @@ public:
     setup_VideoCapture();
     setup_OpenPoseModel();
     setup_Pipeline();
+
+#ifdef KINECT_AZURE
+    setup_azure_kinect();
+#endif
   }
 
   /**
@@ -676,7 +805,11 @@ protected:
       _poses; /**<  contains all the keypoints of all identified people */
 
 #ifdef KINECT_AZURE
-  k4a_capture_t _k4a_rgbd; /**< the last capture */
+  int _azure_device = 0;  /**< the azure device ID */
+  k4a::capture _k4a_rgbd; /**< the last capture */
+  k4a::device _device;
+  k4abt::tracker _tracker;
+  // k4a_capture_t _k4a_rgbd; /**< the last capture */
 #endif
 };
 

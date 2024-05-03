@@ -1,11 +1,14 @@
 {
-  "data": {
-    "a": 1,
-    "b": 2,
-    "c": [1, 2, 3]
-  },
-  "name": "test",
   "device": 0,
-  "model_file": "models/human-pose-estimation-0001.xml",
-  "out_res": "800x600"
+  "CUDA": true,
+  "debug": {
+    "acquire_frame": false,
+    "skeleton_from_depth_compute": false,
+    "skeleton_from_rgb_compute": false,
+    "hessian_compute": false,
+    "cov3D_compute": false,
+    "consistency_check": false,
+    "point_cloud_filter": false,
+    "coordinate_transfrom": false
+  }
 }
