@@ -19,24 +19,24 @@
 #include <chrono>
 #include <fstream>
 #include <iostream>
-#include <string>
 #include <nlohmann/json.hpp>
-#include <pugg/Kernel.h>
 #include <opencv2/core.hpp>
 #include <opencv2/opencv.hpp>
+#include <pugg/Kernel.h>
+#include <string>
 
 #ifdef KINECT_AZURE
 // include Kinect libraries
 #include <k4a/k4a.hpp>
 #include <k4abt.hpp>
 #else
+#include <Eigen/Dense>
 #include <models/hpe_model_openpose.h>
 #include <models/input_data.h>
 #include <openvino/openvino.hpp>
 #include <pipelines/async_pipeline.h>
 #include <pipelines/metadata.h>
 #include <utils/common.hpp>
-#include <Eigen/Dense>
 #endif
 
 using namespace cv;
@@ -60,6 +60,15 @@ map<int, string> keypoints_map = {
  */
 class Skeletonizer3D : public Source<json> {
 
+/*
+  ____  _        _   _                                 _                   
+ / ___|| |_ __ _| |_(_) ___   _ __ ___   ___ _ __ ___ | |__   ___ _ __ ___ 
+ \___ \| __/ _` | __| |/ __| | '_ ` _ \ / _ \ '_ ` _ \| '_ \ / _ \ '__/ __|
+  ___) | || (_| | |_| | (__  | | | | | |  __/ | | | | | |_) |  __/ |  \__ \
+ |____/ \__\__,_|\__|_|\___| |_| |_| |_|\___|_| |_| |_|_.__/ \___|_|  |___/
+                                                                           
+*/
+#ifndef KINECT_AZURE
   static cv::Mat renderHumanPose(HumanPoseResult &_result,
                                  OutputTransform &outputTransform) {
     if (!_result.metaData) {
@@ -84,13 +93,13 @@ class Skeletonizer3D : public Source<json> {
         cv::Scalar(170, 0, 255), cv::Scalar(255, 0, 255),
         cv::Scalar(255, 0, 170), cv::Scalar(255, 0, 85)};
     static const pair<int, int> keypointsOP[] = {
-        {1, 2}, {1, 5},  {2, 3},   {3, 4},  {5, 6},   {6, 7},
-        {1, 8}, {8, 9},  {9, 10},  {1, 11}, {11, 12}, {12, 13},
-        {1, 0}, {0, 14}, {14, 16}, {0, 15}, {15, 17}};
+        {1, 2}, {1, 5},  {2, 3},   {3, 4},  {5, 6},    {6, 7},
+        {1, 8}, {8, 9},  {9, 10},  {1, 11}, {11, 12},  {12, 13},
+        {1, 0}, {0, 14}, {14, 16}, {0, 15}, { 15, 17 }};
     static const pair<int, int> keypointsAE[] = {
         {15, 13}, {13, 11}, {16, 14}, {14, 12}, {11, 12}, {5, 11}, {6, 12},
         {5, 6},   {5, 7},   {6, 8},   {7, 9},   {8, 10},  {1, 2},  {0, 1},
-        {0, 2},   {1, 3},   {2, 4},   {3, 5},   {4, 6}};
+        {0, 2},   {1, 3},   {2, 4},   {3, 5},   { 4, 6 }};
     const int stick_width = 4;
     const cv::Point2f absent_keypoint(-1.0f, -1.0f);
     for (auto &pose : _result.poses) {
@@ -141,6 +150,16 @@ class Skeletonizer3D : public Source<json> {
     cv::addWeighted(output_img, 0.4, pane, 0.6, 0, output_img);
     return output_img;
   }
+#endif
+
+/*
+  __  __      _   _               _     
+ |  \/  | ___| |_| |__   ___   __| |___ 
+ | |\/| |/ _ \ __| '_ \ / _ \ / _` / __|
+ | |  | |  __/ |_| | | | (_) | (_| \__ \
+ |_|  |_|\___|\__|_| |_|\___/ \__,_|___/
+                                        
+*/
 
 public:
   // Constructor
@@ -149,35 +168,17 @@ public:
   // Destructor
   ~Skeletonizer3D() {
     _cap.release();
+#ifdef KINECT_AZURE
+
+#else
     delete _pipeline;
+#endif
   }
 
-  void setup_VideoCapture() {
-    _start_time = chrono::steady_clock::now();
-    // setup video capture
-    _cap.open(_camera_device);
-    if (!_cap.isOpened()) {
-      throw invalid_argument("ERROR: Cannot open the video camera");
-    }
+  /* CONTEXT_RELATED METHODS **************************************************/
+#ifdef KINECT_AZURE
 
-    _cap >> _rgb;
-    cv::Size resolution = _rgb.size();
-    size_t found = _resolution_rgb.find("x");
-    if (found != string::npos) {
-      resolution = cv::Size{
-          stoi(_resolution_rgb.substr(0, found)),
-          stoi(_resolution_rgb.substr(found + 1, _resolution_rgb.length()))};
-
-      _output_transform = OutputTransform(_rgb.size(), resolution);
-      resolution = _output_transform.computeResolution();
-
-      cv::resize(_rgb, _rgb, cv::Size(resolution.width, resolution.height));
-    }
-
-    _rgb_height = resolution.height; //_rgb.rows;
-    _rgb_width = resolution.width;   //_rgb.cols;
-  }
-
+#else
   void setup_OpenPoseModel() {
     // setup inference model
     data_t aspect_ratio = _rgb_width / static_cast<data_t>(_rgb_height);
@@ -195,9 +196,12 @@ public:
     _frame_num = _pipeline->submitData(
         ImageInputData(_rgb), make_shared<ImageMetaData>(_rgb, _start_time));
   }
+#endif
 
+  /* COMMON METHODS ***********************************************************/
+
+  void setup_VideoCapture() {
 #ifdef KINECT_AZURE
-  void setup_azure_kinect() {
     k4a_device_configuration_t device_config =
         K4A_DEVICE_CONFIG_INIT_DISABLE_ALL;
     device_config.color_format =
@@ -228,8 +232,32 @@ public:
         trackerConfig.processing_mode = K4ABT_TRACKER_PROCESSING_MODE_GPU_CUDA;
     }
     _tracker = k4abt::tracker::create(sensor_calibration, trackerConfig);
-  }
+#else
+    _start_time = chrono::steady_clock::now();
+    // setup video capture
+    _cap.open(_camera_device);
+    if (!_cap.isOpened()) {
+      throw invalid_argument("ERROR: Cannot open the video camera");
+    }
+
+    _cap >> _rgb;
+    cv::Size resolution = _rgb.size();
+    size_t found = _resolution_rgb.find("x");
+    if (found != string::npos) {
+      resolution = cv::Size{
+          stoi(_resolution_rgb.substr(0, found)),
+          stoi(_resolution_rgb.substr(found + 1, _resolution_rgb.length()))};
+
+      _output_transform = OutputTransform(_rgb.size(), resolution);
+      resolution = _output_transform.computeResolution();
+
+      cv::resize(_rgb, _rgb, cv::Size(resolution.width, resolution.height));
+    }
+
+    _rgb_height = resolution.height; //_rgb.rows;
+    _rgb_width = resolution.width;   //_rgb.cols;
 #endif
+  }
 
   /**
    * @brief Acquire a frame from a camera device. Camera ID is defined in the
@@ -679,11 +707,11 @@ public:
     }
 
     setup_VideoCapture();
+#ifdef KINECT_AZURE
+
+#else
     setup_OpenPoseModel();
     setup_Pipeline();
-
-#ifdef KINECT_AZURE
-    setup_azure_kinect();
 #endif
   }
 
@@ -761,10 +789,10 @@ public:
   string kind() override { return PLUGIN_NAME; }
 
 protected:
-  Mat _rgbd; /**< the last RGBD frame */
-  Mat _rgb;  /**< the last RGB frame */
+  Mat _rgbd;             /**< the last RGBD frame */
+  Mat _rgb;              /**< the last RGB frame */
   map<string, vector<unsigned char>>
-      _skeleton2D; /**< the skeleton from 2D cameras only*/
+      _skeleton2D;       /**< the skeleton from 2D cameras only*/
   map<string, vector<unsigned char>>
       _skeleton3D;       /**< the skeleton from 3D cameras only*/
   vector<Mat> _heatmaps; /**< the joints heatmaps */
@@ -782,27 +810,21 @@ protected:
   uint32_t _nthreads = 0;           /**< number of CPU threads*/
   uint32_t _frames_processed = 0;
   int64_t _frame_num = 0;
-  unique_ptr<ResultBase> _result;
 
   bool _dummy = false;
 
   int _camera_device = 0;
   data_t _fps = 25;
   string _resolution_rgb = "800x600";
-  int _rgb_height; /**< image size rows*/
-  int _rgb_width;  /**< image size cols*/
+  int _rgb_height;                     /**< image size rows */
+  int _rgb_width;                      /**< image size cols */
   vector<cv::Point2i> _keypoints_list;
   vector<cv::Point3f> _keypoints_cov;
   string _model_file;
   string _agent_id;
-  cv::VideoCapture _cap;
+  VideoCapture _cap;
   chrono::steady_clock::time_point _start_time;
-  OutputTransform _output_transform;
-  unique_ptr<ModelBase> _model;
   ov::Core _core;
-  AsyncPipeline *_pipeline;
-  vector<HumanPose>
-      _poses; /**<  contains all the keypoints of all identified people */
 
 #ifdef KINECT_AZURE
   int _azure_device = 0;  /**< the azure device ID */
@@ -810,6 +832,13 @@ protected:
   k4a::device _device;
   k4abt::tracker _tracker;
   // k4a_capture_t _k4a_rgbd; /**< the last capture */
+#else 
+  unique_ptr<ResultBase> _result;
+  OutputTransform _output_transform;
+  unique_ptr<ModelBase> _model;
+  AsyncPipeline *_pipeline;
+  vector<HumanPose>
+      _poses; /**<  contains all the keypoints of all identified people */
 #endif
 };
 
