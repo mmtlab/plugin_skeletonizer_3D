@@ -16,6 +16,7 @@ set(SRC_DIR ${CMAKE_CURRENT_LIST_DIR}/src)
 set(CMAKE_INSTALL_PREFIX ${USR_DIR})
 set(FETCHCONTENT_QUIET OFF)
 
+
 # DEPENDENCIES #################################################################
 if(WIN32)
   # On Windows, we rely on env variables to find install paths
@@ -173,8 +174,9 @@ if(WIN32)
   find_package( k4abt REQUIRED )
 endif()
 
-if( k4a_FOUND AND k4abt_FOUND)
+if(k4a_FOUND AND k4abt_FOUND)
   add_plugin(skeletonizer3D LIBS ${OpenCV_LIBS} k4a::k4a k4a::k4abt)
+  target_compile_definitions(skeletonizer3D PRIVATE KINECT_AZURE)
 else()
   add_plugin(skeletonizer3D LIBS ${OpenCV_LIBS})
 endif()
