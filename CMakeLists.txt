@@ -16,6 +16,7 @@ set(SRC_DIR ${CMAKE_CURRENT_LIST_DIR}/src)
 set(CMAKE_INSTALL_PREFIX ${USR_DIR})
 set(FETCHCONTENT_QUIET OFF)
 
+
 # DEPENDENCIES #################################################################
 if(WIN32)
   # On Windows, we rely on env variables to find install paths
@@ -147,6 +148,10 @@ include_directories(
   ${COMMON}/utils/include
 )
 
+if(WIN32)
+  set( CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}" ${CMAKE_MODULE_PATH} )
+endif()
+
 # TARGETS ######################################################################
 
 add_library(common STATIC ${COMMON_SOURCES} ${COMMON_HEADERS})
@@ -162,6 +167,19 @@ add_library(common STATIC ${COMMON_SOURCES} ${COMMON_HEADERS})
 # add_plugin(echoj)
 # add_plugin(twice)
 # add_plugin(clock)
+# add_plugin(skeletonizer3D LIBS ${OpenCV_LIBS})
+
+if(WIN32)
+  find_package( k4a REQUIRED )
+  find_package( k4abt REQUIRED )
+endif()
+
+if(k4a_FOUND AND k4abt_FOUND)
+  add_plugin(skeletonizer3D LIBS ${OpenCV_LIBS} k4a::k4a k4a::k4abt)
+  target_compile_definitions(skeletonizer3D PRIVATE KINECT_AZURE)
+else()
+  add_plugin(skeletonizer3D LIBS ${OpenCV_LIBS})
+endif()
 
 # add_loader(loader)
 # add_loader(load_filter)
@@ -176,7 +194,6 @@ if(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/models/${MODEL_NAME}.xml)
   file(DOWNLOAD https://storage.openvinotoolkit.org/repositories/open_model_zoo/2023.0/models_bin/1/${MODEL_NAME}/FP32/${MODEL_NAME}.xml ${CMAKE_CURRENT_SOURCE_DIR}/models/${MODEL_NAME}.xml)
   file(DOWNLOAD https://storage.openvinotoolkit.org/repositories/open_model_zoo/2023.0/models_bin/1/${MODEL_NAME}/FP32/${MODEL_NAME}.bin ${CMAKE_CURRENT_SOURCE_DIR}/models/${MODEL_NAME}.bin)
 endif()
-
 
 # INSTALL ######################################################################
 set(CMAKE_INSTALL_PREFIX ${USR_DIR})

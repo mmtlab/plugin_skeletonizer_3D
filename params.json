@@ -1,5 +1,6 @@
 {
-    "device": 0,
+    "camera_device": 0,
+    "azure_device": 0,
     "model_file": "models/human-pose-estimation-0001.xml",
     "resolution_rgb": "1280x720",
     "fps": 25,

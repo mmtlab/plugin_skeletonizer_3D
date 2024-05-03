@@ -39,7 +39,7 @@ int main(int argc, char *argv[]) {
   SourceDriverJ *driver = nullptr;
   if (drivers.size() == 1) {
     driver = drivers[0];
-    cout << "loaded default driver " << driver->name();
+    cout << "loaded default driver " << driver->name() << endl;
     if (argc >= 3) json_file = argv[2]; 
   } else if (drivers.size() > 1) {
     cout << "found multiple drivers:" << endl;
@@ -70,12 +70,13 @@ int main(int argc, char *argv[]) {
     ifstream file(argv[2]);
     params = json::parse(file);
   } else {
-    params["name"] = "clock test";
+    params["name"] = "default params";
   }
   source->set_params(&params);
   for (auto &[k, v]: source->info()) {
     cout << k << ": " << v << endl;
   }
+
   source->get_output(&out);
   cout << "Output: " << out << endl;
   delete source;
