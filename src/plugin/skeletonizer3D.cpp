@@ -6,33 +6,37 @@
  |____/|_|\_\___|_|\___|\__\___/|_| |_|_/___\___|_| |____/|____/
  */
 
-#include "../source.hpp"
-#include <nlohmann/json.hpp>
-#include <opencv2/core.hpp>
-#include <opencv2/opencv.hpp>
-#include <pugg/Kernel.h>
-
-#include <Eigen/Dense>
-#include <chrono>
-#include <fstream>
-#include <iostream>
-#include <models/hpe_model_openpose.h>
-#include <models/input_data.h>
-#include <nlohmann/json.hpp>
-#include <openvino/openvino.hpp>
-#include <pipelines/async_pipeline.h>
-#include <pipelines/metadata.h>
-#include <string>
-#include <utils/common.hpp>
-
 #ifndef PLUGIN_NAME
 #define PLUGIN_NAME "skeletonizer3D"
 #endif
+
+#ifdef _WIN32
+#define _USE_MATH_DEFINES
+#include <cmath>
+#endif
+
+#include "../source.hpp"
+#include <chrono>
+#include <fstream>
+#include <iostream>
+#include <string>
+#include <nlohmann/json.hpp>
+#include <pugg/Kernel.h>
+#include <opencv2/core.hpp>
+#include <opencv2/opencv.hpp>
 
 #ifdef KINECT_AZURE
 // include Kinect libraries
 #include <k4a/k4a.hpp>
 #include <k4abt.hpp>
+#else
+#include <models/hpe_model_openpose.h>
+#include <models/input_data.h>
+#include <openvino/openvino.hpp>
+#include <pipelines/async_pipeline.h>
+#include <pipelines/metadata.h>
+#include <utils/common.hpp>
+#include <Eigen/Dense>
 #endif
 
 using namespace cv;

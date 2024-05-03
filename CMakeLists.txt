@@ -15,6 +15,7 @@ set(USR_DIR ${CMAKE_CURRENT_LIST_DIR}/usr)
 set(SRC_DIR ${CMAKE_CURRENT_LIST_DIR}/src)
 set(CMAKE_INSTALL_PREFIX ${USR_DIR})
 set(FETCHCONTENT_QUIET OFF)
+option(USE_KINECT_AZURE "Use Kinect Azure cameras" ON)
 
 
 # DEPENDENCIES #################################################################
@@ -156,35 +157,19 @@ endif()
 
 add_library(common STATIC ${COMMON_SOURCES} ${COMMON_HEADERS})
 
-# add_plugin(echo)
-# add_plugin(echoj)
-# add_plugin(twice)
-# add_plugin(clock)
-# add_loader(loader)
-# add_loader(load_filter)
-
-# add_plugin(echo)
-# add_plugin(echoj)
-# add_plugin(twice)
-# add_plugin(clock)
-# add_plugin(skeletonizer3D LIBS ${OpenCV_LIBS})
-
 if(WIN32)
-  find_package( k4a REQUIRED )
-  find_package( k4abt REQUIRED )
+  find_package(k4a)
+  find_package(k4abt)
 endif()
 
-if(k4a_FOUND AND k4abt_FOUND)
+if(k4a_FOUND AND k4abt_FOUND AND USE_KINECT_AZURE)
   add_plugin(skeletonizer3D LIBS ${OpenCV_LIBS} k4a::k4a k4a::k4abt)
   target_compile_definitions(skeletonizer3D PRIVATE KINECT_AZURE)
 else()
   add_plugin(skeletonizer3D LIBS common ${OpenCV_LIBS} openvino::runtime Eigen3::Eigen)
 endif()
 
-# add_loader(loader)
-# add_loader(load_filter)
 add_loader(load_source)
-#add_plugin(quick LIBS common ${OpenCV_LIBS} openvino::runtime)
 
 
 # Download OpenPOSE models #####################################################
