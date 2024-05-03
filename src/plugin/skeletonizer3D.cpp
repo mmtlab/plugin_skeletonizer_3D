@@ -159,6 +159,7 @@ public:
     if (!_cap.isOpened()) {
       throw invalid_argument("ERROR: Cannot open the video camera");
     }
+
     _cap >> _rgb;
     cv::Size resolution = _rgb.size();
     size_t found = _resolution_rgb.find("x");
@@ -166,17 +167,20 @@ public:
       resolution = cv::Size{
           stoi(_resolution_rgb.substr(0, found)),
           stoi(_resolution_rgb.substr(found + 1, _resolution_rgb.length()))};
+
       _output_transform = OutputTransform(_rgb.size(), resolution);
       resolution = _output_transform.computeResolution();
+
+      cv::resize(_rgb, _rgb, cv::Size(resolution.width, resolution.height));
     }
-    // cout << "Resolution: " << resolution << endl;
+
     _rgb_height = resolution.height; //_rgb.rows;
     _rgb_width = resolution.width;   //_rgb.cols;
   }
 
   void setup_OpenPoseModel() {
     // setup inference model
-    data_t aspect_ratio = _rgb.cols / static_cast<data_t>(_rgb.rows);
+    data_t aspect_ratio = _rgb_width / static_cast<data_t>(_rgb_height);
     _model.reset(new HPEOpenPose(_model_file, aspect_ratio, _tsize,
                                  static_cast<data_t>(_threshold), _layout));
   }
@@ -291,6 +295,7 @@ public:
         // Input stream is over
         return return_type::error;
       }
+      cv::resize(_rgb, _rgb, cv::Size(_rgb_width, _rgb_height));
     }
 #endif
     return return_type::success;
