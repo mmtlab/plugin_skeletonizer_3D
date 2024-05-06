@@ -279,11 +279,7 @@ public:
     const clock_t begin_time = clock();
     // acquire and translate into _rgb and _rgbd
     if (_device.get_capture(&_k4a_rgbd,
-                            std::chrono::milliseconds(K4A_WAIT_INFINITE))) {
-      if (debug)
-        cout << "Capture time: " << float(clock() - begin_time) / CLOCKS_PER_SEC
-             << " s" << endl;
-    } else
+                            std::chrono::milliseconds(K4A_WAIT_INFINITE))) 
       return return_type::error;
 
     // acquire and store into _rgb (RGB) and _rgbd (RGBD), if available
@@ -382,7 +378,7 @@ public:
         // Print the body information
         for (uint32_t i = 0; i < num_bodies; i++) {
           k4abt_body_t body = _body_frame.get_body(i);
-          print_body_information(body);
+          //print_body_information(body);
         }
       }
     } else {
@@ -840,6 +836,7 @@ protected:
   k4a::capture _k4a_rgbd; /**< the last capture */
   k4a::device _device;
   k4abt::tracker _tracker;
+  k4abt::frame _body_frame;
   // k4a_capture_t _k4a_rgbd; /**< the last capture */
 #else
   ov::Core _core;
