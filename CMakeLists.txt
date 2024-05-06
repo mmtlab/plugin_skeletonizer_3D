@@ -36,7 +36,6 @@ FetchContent_MakeAvailable(pugg json)
 
 find_package(OpenCV)
 
-
 if(WIN32)
   # On Windows, we rely on env variables to find install paths
   if(NOT DEFINED ENV{OpenCV_DIR})
@@ -68,6 +67,7 @@ else()
   message(STATUS "OpenVINO headers found at ${OPENVINO_INCLUDE_DIR}")
 endif()
 
+find_package(PCL 1.14 REQUIRED)
 
 # MACROS #######################################################################
 # Call: add_plugin(name [SRCS src1 src2 ...] [LIBS lib1 lib2 ...])
@@ -111,6 +111,7 @@ endif()
 include_directories(
   ${OpenCV_INCLUDE_DIRS}
   ${OPENVINO_INCLUDE_DIR}
+  ${PCL_INCLUDE_DIRS}
   ${json_SOURCE_DIR}/include
 )
 
@@ -118,15 +119,6 @@ if(WIN32)
   set( CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}" ${CMAKE_MODULE_PATH} )
 endif()
 
-# UTILITIES ####################################################################
-set(UTILS ${SRC_DIR}/utils)
-add_subdirectory(${UTILS})
-
-include_directories(
-  ${UTILS}/sample_helper_includes
-  ${UTILS}/glfw
-  ${UTILS}/window_controller_3d
-)
 
 # TARGETS ######################################################################
 # add_plugin(echo)
@@ -141,7 +133,7 @@ if(WIN32)
 endif()
 
 if( k4a_FOUND AND k4abt_FOUND)
-  add_plugin(skeletonizer3D LIBS ${OpenCV_LIBS} k4a::k4a k4a::k4abt window_controller_3d::window_controller_3d glfw::glfw)
+  add_plugin(skeletonizer3D LIBS ${OpenCV_LIBS} ${PCL_LIBRARY_DIRS} k4a::k4a k4a::k4abt)
 else()
   add_plugin(skeletonizer3D LIBS ${OpenCV_LIBS})
 endif()

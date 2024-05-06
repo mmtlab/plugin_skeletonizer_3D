@@ -16,6 +16,10 @@
 #include <opencv2/opencv.hpp>
 #include <pugg/Kernel.h>
 
+#include <pcl/io/pcd_io.h>
+#include <pcl/console/parse.h>
+#include <pcl/visualization/cloud_viewer.h>
+
 #ifndef PLUGIN_NAME
 #define PLUGIN_NAME "skeletonizer3D"
 #endif
@@ -26,10 +30,6 @@
   // include Kinect libraries
   #include <k4a/k4a.hpp>
   #include <k4abt.hpp>
-  #include <BodyTrackingHelpers.h>
-  #include <Utilities.h>
-  #include <Window3dWrapper.h>
-
 #endif
 
 using namespace cv;
@@ -119,23 +119,23 @@ public:
       }
     }
 
-    k4a::image depth_image = _k4a_rgbd.get_depth_image();
+    _depth_image = _k4a_rgbd.get_depth_image();
 
     // from k4a::image to cv::Mat --> depth image
     if (colorImage != NULL)
     {
       if(debug){
         // you can check the format with this function
-        k4a_image_format_t format = depth_image.get_format(); // K4A_IMAGE_FORMAT_COLOR_BGRA32 
+        k4a_image_format_t format = _depth_image.get_format(); // K4A_IMAGE_FORMAT_COLOR_BGRA32 
         cout << "rgbd format: " << format << endl;
       }
 
       // get raw buffer
-      uint8_t* buffer = depth_image.get_buffer();
+      uint8_t* buffer = _depth_image.get_buffer();
 
       // convert the raw buffer to cv::Mat
-      int rows = depth_image.get_height_pixels();
-      int cols = depth_image.get_width_pixels();
+      int rows = _depth_image.get_height_pixels();
+      int cols = _depth_image.get_width_pixels();
       _rgbd = cv::Mat(rows , cols, CV_16U, (void*)buffer, cv::Mat::AUTO_STEP);
       
       if(debug){
@@ -219,20 +219,8 @@ public:
         {
           k4abt_body_t body = _body_frame.get_body(i);
           print_body_information(body);
+
         }
-
-        // Visualize the result on the 3D window
-        /*int depth_width = _sensor_calibration.depth_camera_calibration.resolution_width;
-        int depth_height = _sensor_calibration.depth_camera_calibration.resolution_height;
-        
-        VisualizeResult(_body_frame, _window3d, depth_width, depth_height);
-            
-        _body_frame.reset();
-
-        _window3d.SetLayout3d(Visualization::Layout3d::OnlyMainView);
-        _window3d.SetJointFrameVisualization(true);
-        _window3d.Render();*/
-
       }
     }
     else
@@ -260,12 +248,64 @@ public:
    */
   return_type point_cloud_filter(bool debug = false) {
 #ifdef KINECT_AZURE
+    k4a::image pc = _pc_transformation.depth_image_to_point_cloud(_depth_image, K4A_CALIBRATION_TYPE_DEPTH);
+
+    // get raw buffer
+    uint8_t* buffer = pc.get_buffer();
+
+    // convert the raw buffer to cv::Mat
+    int rows = pc.get_height_pixels();
+    int cols = pc.get_width_pixels();
+    _pc = cv::Mat(rows , cols, CV_16U, (void*)buffer, cv::Mat::AUTO_STEP);
+
+    //... populate cloud
+    cv::Mat coords(3, _rgbd.cols * _rgbd.rows, CV_64FC1);
+    for (int col = 0; col < coords.cols; ++col)
+    {
+        coords.at<double>(0, col) = col % _rgbd.cols;
+        coords.at<double>(1, col) = col / _rgbd.cols;
+        coords.at<double>(2, col) = 10;
+    }
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud = img_to_cloud(_rgbd, coords);
+
+    pcl::visualization::CloudViewer viewer ("Simple Cloud Viewer");
+    viewer.showCloud (cloud);
+
     return return_type::success;
 #else
     // NOOP
     return return_type::success;
 #endif
   }
+
+pcl::PointCloud<pcl::PointXYZRGB>::Ptr img_to_cloud(
+        const cv::Mat& image,
+        const cv::Mat &coords)
+{
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZRGB>());
+
+    for (int y=0;y<image.rows;y++)
+    {
+        for (int x=0;x<image.cols;x++)
+        {
+            pcl::PointXYZRGB point;
+            point.x = coords.at<double>(0,y*image.cols+x);
+            point.y = coords.at<double>(1,y*image.cols+x);
+            point.z = coords.at<double>(2,y*image.cols+x);
+
+            cv::Vec3b color = image.at<cv::Vec3b>(cv::Point(x,y));
+            uint8_t r = (color[2]);
+            uint8_t g = (color[1]);
+            uint8_t b = (color[0]);
+
+            int32_t rgb = (r << 16) | (g << 8) | b;
+            point.rgb = *reinterpret_cast<float*>(&rgb);
+
+            cloud->points.push_back(point);
+        }
+    }
+    return cloud;
+}
 
   /**
    * @brief Transform the 3D skeleton coordinates in the global reference frame
@@ -374,87 +414,6 @@ void print_body_index_map_middle_line(k4a::image body_index_map)
   std::cout << std::endl;
 }
 
-void VisualizeResult(k4abt::frame body_frame, Window3dWrapper& window3d, int depth_width, int depth_height) {
-
-    // Obtain original capture that generates the body tracking result
-    k4a::capture original_capture = body_frame.get_capture();
-    k4a::image depth_image = original_capture.get_depth_image();
-
-    std::vector<Color> point_cloud_colors(depth_width * depth_height, { 1.f, 1.f, 1.f, 1.f });
-
-    // Read body index map and assign colors
-    k4a::image body_index_map = body_frame.get_body_index_map();
-    const uint8_t* body_index_map_buffer = body_index_map.get_buffer();
-    for (int i = 0; i < depth_width * depth_height; i++)
-    {
-        uint8_t body_index = body_index_map_buffer[i];
-        if (body_index != K4ABT_BODY_INDEX_MAP_BACKGROUND)
-        {
-            uint32_t bodyId = body_frame.get_body_id(body_index);
-            point_cloud_colors[i] = g_bodyColors[bodyId % g_bodyColors.size()];
-        }
-    }
-    body_index_map.reset();
-
-    k4a_image_t depth_image_t = depth_image.handle();
-
-    // Visualize point cloud
-    window3d.UpdatePointClouds(depth_image_t, point_cloud_colors);
-
-    // Visualize the skeleton data
-    window3d.CleanJointsAndBones();
-    uint32_t num_bodies = body_frame.get_num_bodies();
-    for (uint32_t i = 0; i < num_bodies; i++)
-    {
-        k4abt_body_t body;
-        body.id = body_frame.get_body_id(i);
-
-        // Assign the correct color based on the body id
-        Color color = g_bodyColors[body.id % g_bodyColors.size()];
-        color.a = 0.4f;
-        Color low_confidence_color = color;
-        low_confidence_color.a = 0.1f;
-
-        // Visualize joints
-        for (int joint = 0; joint < static_cast<int>(K4ABT_JOINT_COUNT); joint++)
-        {
-            if (body.skeleton.joints[joint].confidence_level >= K4ABT_JOINT_CONFIDENCE_LOW)
-            {
-                const k4a_float3_t& jointPosition = body.skeleton.joints[joint].position;
-                const k4a_quaternion_t& jointOrientation = body.skeleton.joints[joint].orientation;
-
-                window3d.AddJoint(
-                    jointPosition,
-                    jointOrientation,
-                    body.skeleton.joints[joint].confidence_level >= K4ABT_JOINT_CONFIDENCE_MEDIUM ? color : low_confidence_color);
-            }
-        }
-
-        // Visualize bones
-        for (size_t boneIdx = 0; boneIdx < g_boneList.size(); boneIdx++)
-        {
-            k4abt_joint_id_t joint1 = g_boneList[boneIdx].first;
-            k4abt_joint_id_t joint2 = g_boneList[boneIdx].second;
-
-            if (body.skeleton.joints[joint1].confidence_level >= K4ABT_JOINT_CONFIDENCE_LOW &&
-                body.skeleton.joints[joint2].confidence_level >= K4ABT_JOINT_CONFIDENCE_LOW)
-            {
-                bool confidentBone = body.skeleton.joints[joint1].confidence_level >= K4ABT_JOINT_CONFIDENCE_MEDIUM &&
-                    body.skeleton.joints[joint2].confidence_level >= K4ABT_JOINT_CONFIDENCE_MEDIUM;
-                const k4a_float3_t& joint1Position = body.skeleton.joints[joint1].position;
-                const k4a_float3_t& joint2Position = body.skeleton.joints[joint2].position;
-
-                window3d.AddBone(joint1Position, joint2Position, confidentBone ? color : low_confidence_color);
-            }
-        }
-    }
-
-    original_capture.reset();
-    depth_image.reset();
-
-}
-
-
   /*
     ____  _             _             _          __  __
    |  _ \| |_   _  __ _(_)_ __    ___| |_ _   _ / _|/ _|
@@ -507,14 +466,7 @@ void VisualizeResult(k4abt::frame body_frame, Window3dWrapper& window3d, int dep
       _tracker = k4abt::tracker::create(_sensor_calibration, _trackerConfig);
       cout << "   Body Tracker created!" << endl;
 
-      if(_params.contains("debug")["skel_from_depth_compute"]){
-        if (_params["debug"]["skel_from_depth_compute"] == true)
-        {
-          // Initialize the 3d window controller
-          _window3d.Create("3D Visualization", _sensor_calibration);
-          cout << "   3D window created!" << endl;
-        }
-      }
+      _pc_transformation = k4a_transformation_create(&_sensor_calibration);
 
     #endif
     cout << "Azure Kinect parameters set!" << endl;
@@ -536,11 +488,11 @@ void VisualizeResult(k4abt::frame body_frame, Window3dWrapper& window3d, int dep
     
     acquire_frame(_params["debug"]["acquire_frame"]);
     skeleton_from_depth_compute(_params.at("debug")["skeleton_from_depth_compute"]);
+    point_cloud_filter(_params.at("debug")["point_cloud_filter"]);
     /*skeleton_from_rgb_compute(_params.at("debug")["skeleton_from_rgb_compute"]);
     hessian_compute(_params.at("debug")["hessian_compute"]);
     cov3D_compute(_params.at("debug")["cov3D_compute"]);
     consistency_check(_params.at("debug")["consistency_check"]);
-    point_cloud_filter(_params.at("debug")["point_cloud_filter"]);
     coordinate_transfrom(_params.at("debug")["coordinate_transfrom"]);*/
     // store the output in the out parameter json and the point cloud in the
     // blob parameter
@@ -591,12 +543,10 @@ protected:
   k4a::device _device; /**< the device */
   k4abt_tracker_configuration_t _trackerConfig; /**< the tracker configuration */
   k4abt::tracker _tracker; /**< the body tracker */
-
   k4abt::frame _body_frame; /**< the body frame */
-
-  // Debug variables
-  Window3dWrapper _window3d; /**< the 3D window controller */
-
+  k4a::image _depth_image;
+  k4a::transformation _pc_transformation; /**< the transformation */
+  cv::Mat _pc; /**< the point cloud */
 #endif
 };
 
