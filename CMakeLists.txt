@@ -127,13 +127,15 @@ endif()
 # add_plugin(clock)
 # add_plugin(skeletonizer3D LIBS ${OpenCV_LIBS})
 
+link_directories(${PCL_LIBRARY_DIRS})
+
 if(WIN32)
   find_package( k4a REQUIRED )
   find_package( k4abt REQUIRED )
 endif()
 
 if( k4a_FOUND AND k4abt_FOUND)
-  add_plugin(skeletonizer3D LIBS ${OpenCV_LIBS} ${PCL_LIBRARY_DIRS} k4a::k4a k4a::k4abt)
+  add_plugin(skeletonizer3D LIBS ${OpenCV_LIBS} ${PCL_LIBRARIES} k4a::k4a k4a::k4abt)
 else()
   add_plugin(skeletonizer3D LIBS ${OpenCV_LIBS})
 endif()
