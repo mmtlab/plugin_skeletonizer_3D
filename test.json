@@ -2,13 +2,13 @@
   "device": 0,
   "CUDA": true,
   "debug": {
-    "acquire_frame": false,
-    "skeleton_from_depth_compute": false,
+    "acquire_frame": true,
+    "skeleton_from_depth_compute": true,
     "skeleton_from_rgb_compute": false,
     "hessian_compute": false,
     "cov3D_compute": false,
     "consistency_check": false,
-    "point_cloud_filter": false,
+    "point_cloud_filter": true,
     "coordinate_transfrom": false
   }
 }
