@@ -758,11 +758,12 @@ if (dummy) {
         Mat rgbd_flipped;
         flip(_rgbd, rgbd_flipped, 1);
         rgbd_flipped.convertTo(rgbd_flipped, CV_8U, 255.0 / 3000); // 2000 is the maximum depth value
+        #ifdef KINECT_AZURE
         Mat rgbd_flipped_color;
         // Apply the colormap:
         applyColorMap(rgbd_flipped, rgbd_flipped_color, COLORMAP_HSV);
         imshow("rgbd", rgbd_flipped_color);
-
+        #endif
         int key = cv::waitKey(1000.0 / _fps);
         
         if (27 == key || 'q' == key || 'Q' == key) { // Esc
