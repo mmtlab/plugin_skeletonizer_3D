@@ -207,7 +207,7 @@ public:
         K4A_DEVICE_CONFIG_INIT_DISABLE_ALL;
     device_config.color_format =
         K4A_IMAGE_FORMAT_COLOR_BGRA32; // <==== For Color image
-    device_config.color_resolution = K4A_COLOR_RESOLUTION_1080P;
+    device_config.color_resolution = K4A_COLOR_RESOLUTION_720P;
     device_config.depth_mode =
         K4A_DEPTH_MODE_NFOV_UNBINNED; // <==== For Depth image
 
@@ -234,7 +234,7 @@ public:
     }
     _tracker = k4abt::tracker::create(sensor_calibration, trackerConfig);
 
-    /*
+    
     // acquire a frame just to get the resolution
     _device.get_capture(&_k4a_rgbd, std::chrono::milliseconds(K4A_WAIT_INFINITE));
 
@@ -252,8 +252,8 @@ public:
       cvtColor(_rgb, _rgb, cv::COLOR_BGRA2BGR);
       //_rgb.convertTo(_rgb, CV_8UC3);
     }
-    */
-    _rgb = cv::Mat(1080, 1920, CV_8UC3);
+    
+    //_rgb = cv::Mat(1080, 1920, CV_8UC3);
 
 #else
   // setup video capture
@@ -282,8 +282,6 @@ public:
     _rgb_height = resolution.height; //_rgb.rows;
     _rgb_width = resolution.width;   //_rgb.cols;
     cout << "   RGB Camera resolution: " << _rgb_width << "x" << _rgb_height << endl; 
-    
-
   }
 
   /**
@@ -331,7 +329,7 @@ if (dummy) {
       int cols = colorImage.get_width_pixels();
       _rgb = cv::Mat(rows, cols, CV_8UC4, (void *)buffer, cv::Mat::AUTO_STEP);
       cvtColor(_rgb, _rgb, cv::COLOR_BGRA2BGR);
-
+      //_rgb.convertTo(_rgb, CV_8UC3);
       cout << "RGB - Frame: " << _frame_counter << endl;
 
     }
@@ -760,7 +758,18 @@ if (dummy) {
         Mat rgb_flipped;
         flip(_rgb, rgb_flipped, 1);
         imshow("Human Pose Estimation Results", _rgb);
+        
+        
+        Mat rgbd_flipped;
+        flip(_rgbd, rgbd_flipped, 1);
+        rgbd_flipped.convertTo(rgbd_flipped, CV_8U, 255.0 / 3000); // 2000 is the maximum depth value
+        Mat rgbd_flipped_color;
+        // Apply the colormap:
+        applyColorMap(rgbd_flipped, rgbd_flipped_color, COLORMAP_HSV);
+        imshow("rgbd", rgbd_flipped_color);
+
         int key = cv::waitKey(1000.0 / _fps);
+        
         if (27 == key || 'q' == key || 'Q' == key) { // Esc
           #ifdef KINECT_AZURE
           _device.close();
@@ -772,21 +781,6 @@ if (dummy) {
           return return_type::error;
         }
         
-        /*
-        Mat rgbd_flipped;
-        flip(_rgbd, rgbd_flipped, 1);
-        rgbd_flipped.convertTo(rgbd_flipped, CV_8U, 255.0 / 3000); // 2000 is the maximum depth value
-        Mat rgbd_flipped_color;
-        // Apply the colormap:
-        applyColorMap(rgbd_flipped, rgbd_flipped_color, COLORMAP_HSV);
-        imshow("rgbd", rgbd_flipped_color);
-        
-        int key =
-            waitKey(1000.0 / _fps); // da adattare con il frame rate attuale
-        if (27 == key || 'q' == key || 'Q' == key) { // Esc
-          return return_type::error;                 //
-        }
-        */
         
     }
     
