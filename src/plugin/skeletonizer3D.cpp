@@ -25,8 +25,8 @@
 #include <pugg/Kernel.h>
 #include <string>
 
-#include <pcl/io/pcd_io.h>
 #include <pcl/console/parse.h>
+#include <pcl/io/pcd_io.h>
 #include <pcl/visualization/cloud_viewer.h>
 
 #include <Eigen/Dense>
@@ -42,7 +42,6 @@
 #include <k4a/k4a.hpp>
 #include <k4abt.hpp>
 #endif
-
 
 using namespace cv;
 using namespace std;
@@ -65,14 +64,14 @@ map<int, string> keypoints_map = {
  */
 class Skeletonizer3D : public Source<json> {
 
-/*
-  ____  _        _   _                                 _
- / ___|| |_ __ _| |_(_) ___   _ __ ___   ___ _ __ ___ | |__   ___ _ __ ___
- \___ \| __/ _` | __| |/ __| | '_ ` _ \ / _ \ '_ ` _ \| '_ \ / _ \ '__/ __|
-  ___) | || (_| | |_| | (__  | | | | | |  __/ | | | | | |_) |  __/ |  \__ \
- |____/ \__\__,_|\__|_|\___| |_| |_| |_|\___|_| |_| |_|_.__/ \___|_|  |___/
+  /*
+    ____  _        _   _                                 _
+   / ___|| |_ __ _| |_(_) ___   _ __ ___   ___ _ __ ___ | |__   ___ _ __ ___
+   \___ \| __/ _` | __| |/ __| | '_ ` _ \ / _ \ '_ ` _ \| '_ \ / _ \ '__/ __|
+    ___) | || (_| | |_| | (__  | | | | | |  __/ | | | | | |_) |  __/ |  \__ \
+   |____/ \__\__,_|\__|_|\___| |_| |_| |_|\___|_| |_| |_|_.__/ \___|_|  |___/
 
-*/
+  */
 
   static cv::Mat renderHumanPose(HumanPoseResult &_result,
                                  OutputTransform &outputTransform) {
@@ -98,13 +97,13 @@ class Skeletonizer3D : public Source<json> {
         cv::Scalar(170, 0, 255), cv::Scalar(255, 0, 255),
         cv::Scalar(255, 0, 170), cv::Scalar(255, 0, 85)};
     static const pair<int, int> keypointsOP[] = {
-        {1, 2}, {1, 5},  {2, 3},   {3, 4},  {5, 6},    {6, 7},
-        {1, 8}, {8, 9},  {9, 10},  {1, 11}, {11, 12},  {12, 13},
-        {1, 0}, {0, 14}, {14, 16}, {0, 15}, { 15, 17 }};
+        {1, 2}, {1, 5},  {2, 3},   {3, 4},  {5, 6},   {6, 7},
+        {1, 8}, {8, 9},  {9, 10},  {1, 11}, {11, 12}, {12, 13},
+        {1, 0}, {0, 14}, {14, 16}, {0, 15}, {15, 17}};
     static const pair<int, int> keypointsAE[] = {
         {15, 13}, {13, 11}, {16, 14}, {14, 12}, {11, 12}, {5, 11}, {6, 12},
         {5, 6},   {5, 7},   {6, 8},   {7, 9},   {8, 10},  {1, 2},  {0, 1},
-        {0, 2},   {1, 3},   {2, 4},   {3, 5},   { 4, 6 }};
+        {0, 2},   {1, 3},   {2, 4},   {3, 5},   {4, 6}};
     const int stick_width = 4;
     const cv::Point2f absent_keypoint(-1.0f, -1.0f);
     for (auto &pose : _result.poses) {
@@ -156,7 +155,6 @@ class Skeletonizer3D : public Source<json> {
     return output_img;
   }
 
-
   /*
     __  __      _   _               _
    |  \/  | ___| |_| |__   ___   __| |___
@@ -203,7 +201,6 @@ public:
 
   /* COMMON METHODS ***********************************************************/
 
-
   void setup_VideoCapture() {
 
 #ifdef KINECT_AZURE
@@ -239,7 +236,8 @@ public:
     _tracker = k4abt::tracker::create(sensor_calibration, trackerConfig);
 
     // acquire a frame just to get the resolution
-    _device.get_capture(&_k4a_rgbd, std::chrono::milliseconds(K4A_WAIT_INFINITE));
+    _device.get_capture(&_k4a_rgbd,
+                        std::chrono::milliseconds(K4A_WAIT_INFINITE));
 
     k4a::image colorImage = _k4a_rgbd.get_color_image();
 
@@ -253,9 +251,9 @@ public:
       int cols = colorImage.get_width_pixels();
       _rgb = cv::Mat(rows, cols, CV_8UC4, (void *)buffer, cv::Mat::AUTO_STEP);
       cvtColor(_rgb, _rgb, cv::COLOR_BGRA2BGR);
-    }   
+    }
 #else
-  // setup video capture
+    // setup video capture
     _cap.open(_camera_device);
     if (!_cap.isOpened()) {
       throw invalid_argument("ERROR: Cannot open the video camera");
@@ -263,7 +261,7 @@ public:
     _cap >> _rgb;
 
 #endif
-  _start_time = chrono::steady_clock::now();
+    _start_time = chrono::steady_clock::now();
     cv::Size resolution = _rgb.size();
     size_t found = _resolution_rgb.find("x");
     if (found != string::npos) {
@@ -280,7 +278,8 @@ public:
 
     _rgb_height = resolution.height; //_rgb.rows;
     _rgb_width = resolution.width;   //_rgb.cols;
-    cout << "   RGB Camera resolution: " << _rgb_width << "x" << _rgb_height << endl; 
+    cout << "   RGB Camera resolution: " << _rgb_width << "x" << _rgb_height
+         << endl;
   }
 
   /**
@@ -295,58 +294,54 @@ public:
    * @return result status ad defined in return_type
    */
   return_type acquire_frame(bool dummy = false) {
-// acquire last frame from the camera device
-// if camera device is a Kinect Azure, use the Azure SDK
-// and translate the frame in OpenCV format
+    // acquire last frame from the camera device
+    // if camera device is a Kinect Azure, use the Azure SDK
+    // and translate the frame in OpenCV format
 
-if (dummy) {
+    if (dummy) {
       // TODO: load a file
       throw invalid_argument("ERROR: Dummy not implemented");
     } else {
 #ifdef KINECT_AZURE
-    // acquire and translate into _rgb and _rgbd
-    const clock_t begin_time = clock();
+      // acquire and translate into _rgb and _rgbd
+      const clock_t begin_time = clock();
 
-    // acquire and translate into _rgb and _rgbd
-    if (!_device.get_capture(&_k4a_rgbd,
-                            std::chrono::milliseconds(K4A_WAIT_INFINITE))) 
-      return return_type::error;
+      // acquire and translate into _rgb and _rgbd
+      if (!_device.get_capture(&_k4a_rgbd,
+                               std::chrono::milliseconds(K4A_WAIT_INFINITE)))
+        return return_type::error;
 
+      // acquire and store into _rgb (RGB) and _rgbd (RGBD), if available
+      k4a::image colorImage = _k4a_rgbd.get_color_image();
 
-    // acquire and store into _rgb (RGB) and _rgbd (RGBD), if available
-    k4a::image colorImage = _k4a_rgbd.get_color_image();
+      // from k4a::image to cv::Mat --> color image
+      if (colorImage != NULL) {
+        // get raw buffer
+        uint8_t *buffer = colorImage.get_buffer();
 
-    // from k4a::image to cv::Mat --> color image
-    if (colorImage != NULL) {
-      // get raw buffer
-      uint8_t *buffer = colorImage.get_buffer();
+        // convert the raw buffer to cv::Mat
+        int rows = colorImage.get_height_pixels();
+        int cols = colorImage.get_width_pixels();
+        _rgb = cv::Mat(rows, cols, CV_8UC4, (void *)buffer, cv::Mat::AUTO_STEP);
+        cvtColor(_rgb, _rgb, cv::COLOR_BGRA2BGR);
+        //_rgb.convertTo(_rgb, CV_8UC3);
+      }
 
-      // convert the raw buffer to cv::Mat
-      int rows = colorImage.get_height_pixels();
-      int cols = colorImage.get_width_pixels();
-      _rgb = cv::Mat(rows, cols, CV_8UC4, (void *)buffer, cv::Mat::AUTO_STEP);
-      cvtColor(_rgb, _rgb, cv::COLOR_BGRA2BGR);
-      //_rgb.convertTo(_rgb, CV_8UC3);
-   
+      k4a::image depthImage = _k4a_rgbd.get_depth_image();
 
-    }
+      // from k4a::image to cv::Mat --> depth image
+      if (depthImage != NULL) {
+        // get raw buffer
+        uint8_t *buffer = depthImage.get_buffer();
 
-    k4a::image depthImage = _k4a_rgbd.get_depth_image();
+        // convert the raw buffer to cv::Mat
+        int rows = depthImage.get_height_pixels();
+        int cols = depthImage.get_width_pixels();
+        _rgbd = cv::Mat(rows, cols, CV_16U, (void *)buffer, cv::Mat::AUTO_STEP);
+      }
 
-    // from k4a::image to cv::Mat --> depth image
-    if (depthImage != NULL) {
-      // get raw buffer
-      uint8_t *buffer = depthImage.get_buffer();
-
-      // convert the raw buffer to cv::Mat
-      int rows = depthImage.get_height_pixels();
-      int cols = depthImage.get_width_pixels();
-      _rgbd = cv::Mat(rows, cols, CV_16U, (void *)buffer, cv::Mat::AUTO_STEP);
-      
-    }
-
-#else   
-      _cap >> _rgb; 
+#else
+      _cap >> _rgb;
 #endif
 
       if (_rgb.empty()) {
@@ -354,11 +349,8 @@ if (dummy) {
         return return_type::error;
       }
       cv::resize(_rgb, _rgb, cv::Size(_rgb_width, _rgb_height));
-  
-
     }
     _start_time = chrono::steady_clock::now();
-
 
     return return_type::success;
   }
@@ -395,7 +387,7 @@ if (dummy) {
         // Print the body information
         for (uint32_t i = 0; i < num_bodies; i++) {
           k4abt_body_t body = _body_frame.get_body(i);
-          //print_body_information(body);
+          // print_body_information(body);
         }
       }
     } else {
@@ -739,7 +731,8 @@ if (dummy) {
     (*out)["agent_id"] = _agent_id;
 
     acquire_frame(_dummy);
-    skeleton_from_depth_compute(_params["debug"]["skeleton_from_depth_compute"]);
+    skeleton_from_depth_compute(
+        _params["debug"]["skeleton_from_depth_compute"]);
     skeleton_from_rgb_compute(_params["debug"]["skeleton_from_rgb_compute"]);
 
     if (!(_result)) {
@@ -747,42 +740,39 @@ if (dummy) {
     }
 
     hessian_compute(_params["debug"]["hessian_compute"]);
-    
-    if (_params["debug"]["viewer"]) {
-        
-        Mat rgb_flipped;
-        flip(_rgb, rgb_flipped, 1);
-        imshow("Human Pose Estimation Results", _rgb);
-        
-        
-        Mat rgbd_flipped;
-        flip(_rgbd, rgbd_flipped, 1);
-        rgbd_flipped.convertTo(rgbd_flipped, CV_8U, 255.0 / 3000); // 2000 is the maximum depth value
-        #ifdef KINECT_AZURE
-        Mat rgbd_flipped_color;
-        // Apply the colormap:
-        applyColorMap(rgbd_flipped, rgbd_flipped_color, COLORMAP_HSV);
-        imshow("rgbd", rgbd_flipped_color);
-        #endif
-        int key = cv::waitKey(1000.0 / _fps);
-        
-        if (27 == key || 'q' == key || 'Q' == key) { // Esc
-          #ifdef KINECT_AZURE
-          _device.close();
-          #else
-          _cap.release();
-          #endif
-          destroyAllWindows();
 
-          return return_type::error;
-        }
-        
-        
+    if (_params["debug"]["viewer"]) {
+
+      Mat rgb_flipped;
+      flip(_rgb, rgb_flipped, 1);
+      imshow("Human Pose Estimation Results", _rgb);
+
+      Mat rgbd_flipped;
+      flip(_rgbd, rgbd_flipped, 1);
+      rgbd_flipped.convertTo(rgbd_flipped, CV_8U,
+                             255.0 / 3000); // 2000 is the maximum depth value
+#ifdef KINECT_AZURE
+      Mat rgbd_flipped_color;
+      // Apply the colormap:
+      applyColorMap(rgbd_flipped, rgbd_flipped_color, COLORMAP_HSV);
+      imshow("rgbd", rgbd_flipped_color);
+#endif
+      int key = cv::waitKey(1000.0 / _fps);
+
+      if (27 == key || 'q' == key || 'Q' == key) { // Esc
+#ifdef KINECT_AZURE
+        _device.close();
+#else
+        _cap.release();
+#endif
+        destroyAllWindows();
+
+        return return_type::error;
+      }
     }
-    
 
     // Prepare output
-    
+
     if (_poses.size() > 0) {
       for (int kp = 0; kp < HPEOpenPose::keypointsNumber; kp++) {
         if (_keypoints_list[kp].x < 0 || _keypoints_list[kp].y < 0)
@@ -810,6 +800,7 @@ if (dummy) {
   map<string, string> info() override {
     map<string, string> info;
     info["kind"] = kind();
+    info["model_file"] = _model_file;
     return info;
   }
 
