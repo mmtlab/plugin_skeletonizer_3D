@@ -25,6 +25,10 @@
 #include <pugg/Kernel.h>
 #include <string>
 
+#include <pcl/io/pcd_io.h>
+#include <pcl/console/parse.h>
+#include <pcl/visualization/cloud_viewer.h>
+
 #include <Eigen/Dense>
 #include <models/hpe_model_openpose.h>
 #include <models/input_data.h>
@@ -234,7 +238,6 @@ public:
     }
     _tracker = k4abt::tracker::create(sensor_calibration, trackerConfig);
 
-    
     // acquire a frame just to get the resolution
     _device.get_capture(&_k4a_rgbd, std::chrono::milliseconds(K4A_WAIT_INFINITE));
 
@@ -250,11 +253,7 @@ public:
       int cols = colorImage.get_width_pixels();
       _rgb = cv::Mat(rows, cols, CV_8UC4, (void *)buffer, cv::Mat::AUTO_STEP);
       cvtColor(_rgb, _rgb, cv::COLOR_BGRA2BGR);
-      //_rgb.convertTo(_rgb, CV_8UC3);
-    }
-    
-    //_rgb = cv::Mat(1080, 1920, CV_8UC3);
-
+    }   
 #else
   // setup video capture
     _cap.open(_camera_device);
@@ -300,7 +299,6 @@ public:
 // if camera device is a Kinect Azure, use the Azure SDK
 // and translate the frame in OpenCV format
 
-    cout << endl << "START - Frame: " << _frame_counter << endl;
 if (dummy) {
       // TODO: load a file
       throw invalid_argument("ERROR: Dummy not implemented");
@@ -308,7 +306,6 @@ if (dummy) {
 #ifdef KINECT_AZURE
     // acquire and translate into _rgb and _rgbd
     const clock_t begin_time = clock();
-    cout << "NOT DUMMY - Frame: " << _frame_counter << endl;
 
     // acquire and translate into _rgb and _rgbd
     if (!_device.get_capture(&_k4a_rgbd,
@@ -330,7 +327,7 @@ if (dummy) {
       _rgb = cv::Mat(rows, cols, CV_8UC4, (void *)buffer, cv::Mat::AUTO_STEP);
       cvtColor(_rgb, _rgb, cv::COLOR_BGRA2BGR);
       //_rgb.convertTo(_rgb, CV_8UC3);
-      cout << "RGB - Frame: " << _frame_counter << endl;
+   
 
     }
 
@@ -345,7 +342,7 @@ if (dummy) {
       int rows = depthImage.get_height_pixels();
       int cols = depthImage.get_width_pixels();
       _rgbd = cv::Mat(rows, cols, CV_16U, (void *)buffer, cv::Mat::AUTO_STEP);
-      cout << "RGBD - Frame: " << _frame_counter << endl;
+      
     }
 
 #else   
@@ -357,14 +354,12 @@ if (dummy) {
         return return_type::error;
       }
       cv::resize(_rgb, _rgb, cv::Size(_rgb_width, _rgb_height));
-      cout << "RGB RESIZE - Frame: " << _frame_counter << endl;
-      cout << " - Size of the frame: " << _rgb_width << "x" << _rgb_height << endl;
+  
 
     }
     _start_time = chrono::steady_clock::now();
 
-    
-    _frame_counter++;
+
     return return_type::success;
   }
 
@@ -861,8 +856,6 @@ protected:
   string _agent_id;
   VideoCapture _cap;
   chrono::steady_clock::time_point _start_time;
-
-  int _frame_counter = 0;
 
 #ifdef KINECT_AZURE
   int _azure_device = 0;  /**< the azure device ID */
