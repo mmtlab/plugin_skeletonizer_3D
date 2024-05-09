@@ -27,7 +27,7 @@
 
 #include <pcl/io/pcd_io.h>
 #include <pcl/console/parse.h>
-#include <pcl/visualization/cloud_viewer.h>
+#include <pcl/visualization/pcl_visualizer.h>
 
 #include <Eigen/Dense>
 #include <models/hpe_model_openpose.h>
@@ -229,6 +229,8 @@ public:
         device_config.depth_mode, device_config.color_resolution);
     cout << "   Camera calibrated!" << endl;
 
+    _pc_transformation = k4a_transformation_create(&sensor_calibration);
+
     k4abt_tracker_configuration_t trackerConfig = K4ABT_TRACKER_CONFIG_DEFAULT;
     if (_params.contains("CUDA")) {
       cout << "   Body tracker CUDA processor enabled: " << _params["CUDA"]
@@ -331,16 +333,16 @@ if (dummy) {
 
     }
 
-    k4a::image depthImage = _k4a_rgbd.get_depth_image();
+    _depth_image = _k4a_rgbd.get_depth_image();
 
     // from k4a::image to cv::Mat --> depth image
-    if (depthImage != NULL) {
+    if (_depth_image != NULL) {
       // get raw buffer
-      uint8_t *buffer = depthImage.get_buffer();
+      uint8_t *buffer = _depth_image.get_buffer();
 
       // convert the raw buffer to cv::Mat
-      int rows = depthImage.get_height_pixels();
-      int cols = depthImage.get_width_pixels();
+      int rows = _depth_image.get_height_pixels();
+      int cols = _depth_image.get_width_pixels();
       _rgbd = cv::Mat(rows, cols, CV_16U, (void *)buffer, cv::Mat::AUTO_STEP);
       
     }
@@ -354,8 +356,6 @@ if (dummy) {
         return return_type::error;
       }
       cv::resize(_rgb, _rgb, cv::Size(_rgb_width, _rgb_height));
-  
-
     }
     _start_time = chrono::steady_clock::now();
 
@@ -390,8 +390,6 @@ if (dummy) {
 
       if (debug) {
 
-        cout << "Skeleton from depth compute... DEBUG MODE" << endl;
-
         // Print the body information
         for (uint32_t i = 0; i < num_bodies; i++) {
           k4abt_body_t body = _body_frame.get_body(i);
@@ -421,13 +419,85 @@ if (dummy) {
    * @return result status ad defined in return_type
    */
   return_type point_cloud_filter(bool debug = false) {
+    cout << "0 - Filtering point cloud..." << endl;
 #ifdef KINECT_AZURE
-    return return_type::success;
-#else
+
+    cout << "1 - Filtering point cloud..." << endl;
+    k4a::image pc = _pc_transformation.depth_image_to_point_cloud(_k4a_rgbd.get_depth_image(), K4A_CALIBRATION_TYPE_DEPTH);
+
+    cout << "2 - Filtering point cloud..." << endl;
+    // get raw buffer
+    uint8_t* buffer = pc.get_buffer();
+    
+    cout << "3 - Filtering point cloud..." << endl;
+    // convert the raw buffer to cv::Mat
+    int rows = pc.get_height_pixels();
+    int cols = pc.get_width_pixels();
+    _point_cloud = cv::Mat(rows , cols, CV_16U, (void*)buffer, cv::Mat::AUTO_STEP);
+
+#endif  
+
+    cout << "4 - Filtering point cloud..." << endl;
+
+    // Converte la variabile cv::Mat in un point cloud di tipo pcl::PointCloud<pcl::PointXYZ>
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
+    cloud->width = _point_cloud.cols;
+    cloud->height = _point_cloud.rows;
+    cloud->points.resize(cloud->width * cloud->height);
+
+    for (int i = 0; i < _point_cloud.rows; ++i)
+    {
+        for (int j = 0; j < _point_cloud.cols; ++j)
+        {
+            const cv::Vec3f& point = _point_cloud.at<cv::Vec3f>(i, j);
+            cloud->points[i * cloud->width + j].x = point[0];
+            cloud->points[i * cloud->width + j].y = point[1];
+            cloud->points[i * cloud->width + j].z = point[2];
+        }
+    }
+    
+    cout << "5 - Filtering point cloud..." << endl;
+    
+    /*pcl::visualization::PCLVisualizer viewer("Cloud Viewer");
+    viewer.addPointCloud<pcl::PointXYZ>(cloud, "cloud");
+    viewer.setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_COLOR, 1.0, 0.0, 0.0, "cloud");
+    viewer.spinOnce();*/
+    
+    cout << "6 - Filtering point cloud..." << endl;
+    
     // NOOP
     return return_type::success;
-#endif
+
   }
+
+  pcl::PointCloud<pcl::PointXYZRGB>::Ptr img_to_cloud(
+        const cv::Mat& image,
+        const cv::Mat &coords)
+{
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZRGB>());
+
+    for (int y=0;y<image.rows;y++)
+    {
+        for (int x=0;x<image.cols;x++)
+        {
+            pcl::PointXYZRGB point;
+            point.x = coords.at<double>(0,y*image.cols+x);
+            point.y = coords.at<double>(1,y*image.cols+x);
+            point.z = coords.at<double>(2,y*image.cols+x);
+
+            cv::Vec3b color = image.at<cv::Vec3b>(cv::Point(x,y));
+            uint8_t r = (color[2]);
+            uint8_t g = (color[1]);
+            uint8_t b = (color[0]);
+
+            int32_t rgb = (r << 16) | (g << 8) | b;
+            point.rgb = *reinterpret_cast<float*>(&rgb);
+
+            cloud->points.push_back(point);
+        }
+    }
+    return cloud;
+}
 
   /**
    * @brief Transform the 3D skeleton coordinates in the global reference frame
@@ -738,9 +808,33 @@ if (dummy) {
     out->clear();
     (*out)["agent_id"] = _agent_id;
 
-    acquire_frame(_dummy);
-    skeleton_from_depth_compute(_params["debug"]["skeleton_from_depth_compute"]);
-    skeleton_from_rgb_compute(_params["debug"]["skeleton_from_rgb_compute"]);
+    if (acquire_frame(_dummy)==return_type::error) {
+      return return_type::error;
+    }
+    else{
+      cout << "Frame acquired!" << endl;
+    }
+
+    if(skeleton_from_depth_compute(_params["debug"]["skeleton_from_depth_compute"])==return_type::error){
+      return return_type::error;
+    }
+    else{
+      cout << "Skeleton from depth computed!" << endl;
+    }
+
+    if(point_cloud_filter(_params["debug"]["point_cloud_filter"])==return_type::error){
+      return return_type::error;
+    }
+    else{
+      cout << "Point cloud filtered!" << endl;
+    }
+
+    if(skeleton_from_rgb_compute(_params["debug"]["skeleton_from_rgb_compute"])==return_type::error){
+      return return_type::error;
+    }
+    else{
+      cout << "Skeleton from RGB computed!" << endl;
+    }
 
     if (!(_result)) {
       return return_type::warning;
@@ -863,6 +957,9 @@ protected:
   k4a::device _device;
   k4abt::tracker _tracker;
   k4abt::frame _body_frame;
+  k4a::image _depth_image;
+  k4a::transformation _pc_transformation; /**< the transformation */
+  cv::Mat _pc; /**< the point cloud */
 
 #endif
   ov::Core _core;
@@ -893,7 +990,6 @@ int main(int argc, char const *argv[]) {
 
   return_type rt = return_type::success;
   try {
-    int cam_id = 0;
 
     // Aprire il file JSON in lettura
     ifstream file("params.json");
@@ -915,9 +1011,9 @@ int main(int argc, char const *argv[]) {
     while ((rt = sk.get_output(&output)) != return_type::error) {
       if (rt == return_type::warning) {
         cout << endl << "*** Warning: no result." << endl;
-      } else {
+      } /*else {
         cout << "Output: " << output.dump() << endl;
-      }
+      }*/
     }
     cout << endl;
   } catch (const exception &error) {

@@ -156,6 +156,7 @@ endif()
 
 # TARGETS ######################################################################
 link_directories(${PCL_LIBRARY_DIRS})
+add_definitions(${PCL_DEFINITIONS})
 
 add_library(common STATIC ${COMMON_SOURCES} ${COMMON_HEADERS})
 
