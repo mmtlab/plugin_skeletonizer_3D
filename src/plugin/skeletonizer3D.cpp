@@ -25,11 +25,10 @@
 #include <pugg/Kernel.h>
 #include <string>
 
-#ifdef KINECT_AZURE
-// include Kinect libraries
-#include <k4a/k4a.hpp>
-#include <k4abt.hpp>
-#else
+#include <pcl/io/pcd_io.h>
+#include <pcl/console/parse.h>
+#include <pcl/visualization/cloud_viewer.h>
+
 #include <Eigen/Dense>
 #include <models/hpe_model_openpose.h>
 #include <models/input_data.h>
@@ -37,7 +36,13 @@
 #include <pipelines/async_pipeline.h>
 #include <pipelines/metadata.h>
 #include <utils/common.hpp>
+
+#ifdef KINECT_AZURE
+// include Kinect libraries
+#include <k4a/k4a.hpp>
+#include <k4abt.hpp>
 #endif
+
 
 using namespace cv;
 using namespace std;
@@ -68,7 +73,7 @@ class Skeletonizer3D : public Source<json> {
  |____/ \__\__,_|\__|_|\___| |_| |_| |_|\___|_| |_| |_|_.__/ \___|_|  |___/
 
 */
-#ifndef KINECT_AZURE
+
   static cv::Mat renderHumanPose(HumanPoseResult &_result,
                                  OutputTransform &outputTransform) {
     if (!_result.metaData) {
@@ -150,7 +155,7 @@ class Skeletonizer3D : public Source<json> {
     cv::addWeighted(output_img, 0.4, pane, 0.6, 0, output_img);
     return output_img;
   }
-#endif
+
 
   /*
     __  __      _   _               _
@@ -170,15 +175,14 @@ public:
     _cap.release();
 #ifdef KINECT_AZURE
 
-#else
-    delete _pipeline;
 #endif
+    delete _pipeline;
   }
 
   /* CONTEXT_RELATED METHODS **************************************************/
 #ifdef KINECT_AZURE
 
-#else
+#endif
   void setup_OpenPoseModel() {
     // setup inference model
     data_t aspect_ratio = _rgb_width / static_cast<data_t>(_rgb_height);
@@ -196,17 +200,18 @@ public:
     _frame_num = _pipeline->submitData(
         ImageInputData(_rgb), make_shared<ImageMetaData>(_rgb, _start_time));
   }
-#endif
 
   /* COMMON METHODS ***********************************************************/
 
+
   void setup_VideoCapture() {
+
 #ifdef KINECT_AZURE
     k4a_device_configuration_t device_config =
         K4A_DEVICE_CONFIG_INIT_DISABLE_ALL;
     device_config.color_format =
         K4A_IMAGE_FORMAT_COLOR_BGRA32; // <==== For Color image
-    device_config.color_resolution = K4A_COLOR_RESOLUTION_1080P;
+    device_config.color_resolution = K4A_COLOR_RESOLUTION_720P;
     device_config.depth_mode =
         K4A_DEPTH_MODE_NFOV_UNBINNED; // <==== For Depth image
 
@@ -232,18 +237,37 @@ public:
         trackerConfig.processing_mode = K4ABT_TRACKER_PROCESSING_MODE_GPU_CUDA;
     }
     _tracker = k4abt::tracker::create(sensor_calibration, trackerConfig);
+
+    // acquire a frame just to get the resolution
+    _device.get_capture(&_k4a_rgbd, std::chrono::milliseconds(K4A_WAIT_INFINITE));
+
+    k4a::image colorImage = _k4a_rgbd.get_color_image();
+
+    // from k4a::image to cv::Mat --> color image
+    if (colorImage != NULL) {
+      // get raw buffer
+      uint8_t *buffer = colorImage.get_buffer();
+
+      // convert the raw buffer to cv::Mat
+      int rows = colorImage.get_height_pixels();
+      int cols = colorImage.get_width_pixels();
+      _rgb = cv::Mat(rows, cols, CV_8UC4, (void *)buffer, cv::Mat::AUTO_STEP);
+      cvtColor(_rgb, _rgb, cv::COLOR_BGRA2BGR);
+    }   
 #else
-    _start_time = chrono::steady_clock::now();
-    // setup video capture
+  // setup video capture
     _cap.open(_camera_device);
     if (!_cap.isOpened()) {
       throw invalid_argument("ERROR: Cannot open the video camera");
     }
-
     _cap >> _rgb;
+
+#endif
+  _start_time = chrono::steady_clock::now();
     cv::Size resolution = _rgb.size();
     size_t found = _resolution_rgb.find("x");
     if (found != string::npos) {
+      cout << "found? " << found << endl;
       resolution = cv::Size{
           stoi(_resolution_rgb.substr(0, found)),
           stoi(_resolution_rgb.substr(found + 1, _resolution_rgb.length()))};
@@ -256,7 +280,7 @@ public:
 
     _rgb_height = resolution.height; //_rgb.rows;
     _rgb_width = resolution.width;   //_rgb.cols;
-#endif
+    cout << "   RGB Camera resolution: " << _rgb_width << "x" << _rgb_height << endl; 
   }
 
   /**
@@ -274,17 +298,20 @@ public:
 // acquire last frame from the camera device
 // if camera device is a Kinect Azure, use the Azure SDK
 // and translate the frame in OpenCV format
+
+if (dummy) {
+      // TODO: load a file
+      throw invalid_argument("ERROR: Dummy not implemented");
+    } else {
 #ifdef KINECT_AZURE
     // acquire and translate into _rgb and _rgbd
     const clock_t begin_time = clock();
+
     // acquire and translate into _rgb and _rgbd
-    if (_device.get_capture(&_k4a_rgbd,
-                            std::chrono::milliseconds(K4A_WAIT_INFINITE))) {
-      if (debug)
-        cout << "Capture time: " << float(clock() - begin_time) / CLOCKS_PER_SEC
-             << " s" << endl;
-    } else
+    if (!_device.get_capture(&_k4a_rgbd,
+                            std::chrono::milliseconds(K4A_WAIT_INFINITE))) 
       return return_type::error;
+
 
     // acquire and store into _rgb (RGB) and _rgbd (RGBD), if available
     k4a::image colorImage = _k4a_rgbd.get_color_image();
@@ -298,12 +325,16 @@ public:
       int rows = colorImage.get_height_pixels();
       int cols = colorImage.get_width_pixels();
       _rgb = cv::Mat(rows, cols, CV_8UC4, (void *)buffer, cv::Mat::AUTO_STEP);
+      cvtColor(_rgb, _rgb, cv::COLOR_BGRA2BGR);
+      //_rgb.convertTo(_rgb, CV_8UC3);
+   
+
     }
 
     k4a::image depthImage = _k4a_rgbd.get_depth_image();
 
     // from k4a::image to cv::Mat --> depth image
-    if (colorImage != NULL) {
+    if (depthImage != NULL) {
       // get raw buffer
       uint8_t *buffer = depthImage.get_buffer();
 
@@ -311,21 +342,24 @@ public:
       int rows = depthImage.get_height_pixels();
       int cols = depthImage.get_width_pixels();
       _rgbd = cv::Mat(rows, cols, CV_16U, (void *)buffer, cv::Mat::AUTO_STEP);
+      
     }
-#else
-    _start_time = chrono::steady_clock::now();
-    if (dummy) {
-      // TODO: load a file
-      throw invalid_argument("ERROR: Dummy not implemented");
-    } else {
-      _cap >> _rgb;
+
+#else   
+      _cap >> _rgb; 
+#endif
+
       if (_rgb.empty()) {
         // Input stream is over
         return return_type::error;
       }
       cv::resize(_rgb, _rgb, cv::Size(_rgb_width, _rgb_height));
+  
+
     }
-#endif
+    _start_time = chrono::steady_clock::now();
+
+
     return return_type::success;
   }
 
@@ -342,47 +376,26 @@ public:
    */
   return_type skeleton_from_depth_compute(bool debug = false) {
 #ifdef KINECT_AZURE
-    cout << "Skeleton from depth compute... STARTED" << endl;
 
     if (!_tracker.enqueue_capture(_k4a_rgbd)) {
       // It should never hit timeout when K4A_WAIT_INFINITE is set.
-      std::cout << "Error! Add capture to tracker process queue timeout!"
-                << std::endl;
+      cout << "Error! Add capture to tracker process queue timeout!" << endl;
       return return_type::error;
     }
 
     _body_frame = _tracker.pop_result();
     if (_body_frame != nullptr) {
       uint32_t num_bodies = _body_frame.get_num_bodies();
-      std::cout << num_bodies << " bodies are detected!" << std::endl;
+      std::cout << num_bodies << " bodies are detected!" << endl;
 
       if (debug) {
 
         cout << "Skeleton from depth compute... DEBUG MODE" << endl;
 
-        cv::Mat rgb_flipped;
-        cv::flip(_rgb, rgb_flipped, 1);
-        imshow("rgb", rgb_flipped);
-
-        cv::Mat rgbd_flipped;
-        cv::flip(_rgbd, rgbd_flipped, 1);
-        rgbd_flipped.convertTo(rgbd_flipped, CV_8U,
-                               255.0 / 3000); // 2000 is the maximum depth value
-        cv::Mat rgbd_flipped_color;
-        // Apply the colormap:
-        cv::applyColorMap(rgbd_flipped, rgbd_flipped_color, cv::COLORMAP_HSV);
-        imshow("rgbd", rgbd_flipped_color);
-
-        int key =
-            cv::waitKey(1000.0 / 25); // da adattare con il frame rate attuale
-        if (27 == key || 'q' == key || 'Q' == key) { // Esc
-          return return_type::error;                 //
-        }
-
         // Print the body information
         for (uint32_t i = 0; i < num_bodies; i++) {
           k4abt_body_t body = _body_frame.get_body(i);
-          print_body_information(body);
+          //print_body_information(body);
         }
       }
     } else {
@@ -445,9 +458,6 @@ public:
    * @return result status ad defined in return_type
    */
   return_type skeleton_from_rgb_compute(bool debug = false) {
-#ifdef KINECT_AZURE
-
-#else
     if (_pipeline->isReadyToProcess()) {
       _frame_num = _pipeline->submitData(
           ImageInputData(_rgb), make_shared<ImageMetaData>(_rgb, _start_time));
@@ -467,7 +477,6 @@ public:
     }
     _frames_processed++;
 
-#endif
     return return_type::success;
   }
 
@@ -481,9 +490,6 @@ public:
    * @return result status ad defined in return_type
    */
   return_type hessian_compute(bool debug = false) {
-#ifdef KINECT_AZURE
-
-#else
     // y -> rows
     // x -> cols
 
@@ -641,7 +647,6 @@ public:
         }
       }
     }
-#endif
     return return_type::success;
   }
 
@@ -713,12 +718,8 @@ public:
     }
 
     setup_VideoCapture();
-#ifdef KINECT_AZURE
-
-#else
     setup_OpenPoseModel();
     setup_Pipeline();
-#endif
   }
 
   /**
@@ -738,10 +739,7 @@ public:
     (*out)["agent_id"] = _agent_id;
 
     acquire_frame(_dummy);
-
-#ifdef KINECT_AZURE
-
-#else
+    skeleton_from_depth_compute(_params["debug"]["skeleton_from_depth_compute"]);
     skeleton_from_rgb_compute(_params["debug"]["skeleton_from_rgb_compute"]);
 
     if (!(_result)) {
@@ -749,16 +747,41 @@ public:
     }
 
     hessian_compute(_params["debug"]["hessian_compute"]);
-
+    
     if (_params["debug"]["viewer"]) {
-      cv::imshow("Human Pose Estimation Results", _rgb);
-      int key = cv::waitKey(1000.0 / _fps);
-      if (27 == key || 'q' == key || 'Q' == key) { // Esc
-        return return_type::error;
-      }
+        
+        Mat rgb_flipped;
+        flip(_rgb, rgb_flipped, 1);
+        imshow("Human Pose Estimation Results", _rgb);
+        
+        
+        Mat rgbd_flipped;
+        flip(_rgbd, rgbd_flipped, 1);
+        rgbd_flipped.convertTo(rgbd_flipped, CV_8U, 255.0 / 3000); // 2000 is the maximum depth value
+        Mat rgbd_flipped_color;
+        // Apply the colormap:
+        applyColorMap(rgbd_flipped, rgbd_flipped_color, COLORMAP_HSV);
+        imshow("rgbd", rgbd_flipped_color);
+
+        int key = cv::waitKey(1000.0 / _fps);
+        
+        if (27 == key || 'q' == key || 'Q' == key) { // Esc
+          #ifdef KINECT_AZURE
+          _device.close();
+          #else
+          _cap.release();
+          #endif
+          destroyAllWindows();
+
+          return return_type::error;
+        }
+        
+        
     }
+    
 
     // Prepare output
+    
     if (_poses.size() > 0) {
       for (int kp = 0; kp < HPEOpenPose::keypointsNumber; kp++) {
         if (_keypoints_list[kp].x < 0 || _keypoints_list[kp].y < 0)
@@ -772,7 +795,6 @@ public:
 
     // store the output in the out parameter json and the point cloud in the
     // blob parameter
-#endif
     return return_type::success;
   }
 
@@ -825,7 +847,7 @@ protected:
 
   int _camera_device = 0;
   data_t _fps = 25;
-  string _resolution_rgb = "800x600";
+  string _resolution_rgb = "";
   int _rgb_height; /**< image size rows */
   int _rgb_width;  /**< image size cols */
   vector<cv::Point2i> _keypoints_list;
@@ -840,8 +862,9 @@ protected:
   k4a::capture _k4a_rgbd; /**< the last capture */
   k4a::device _device;
   k4abt::tracker _tracker;
-  // k4a_capture_t _k4a_rgbd; /**< the last capture */
-#else
+  k4abt::frame _body_frame;
+
+#endif
   ov::Core _core;
   unique_ptr<ResultBase> _result;
   OutputTransform _output_transform;
@@ -849,7 +872,6 @@ protected:
   AsyncPipeline *_pipeline;
   vector<HumanPose>
       _poses; /**<  contains all the keypoints of all identified people */
-#endif
 };
 
 INSTALL_SOURCE_DRIVER(Skeletonizer3D, json);

@@ -15,7 +15,7 @@ set(USR_DIR ${CMAKE_CURRENT_LIST_DIR}/usr)
 set(SRC_DIR ${CMAKE_CURRENT_LIST_DIR}/src)
 set(CMAKE_INSTALL_PREFIX ${USR_DIR})
 set(FETCHCONTENT_QUIET OFF)
-option(USE_KINECT_AZURE "Use Kinect Azure cameras" ON)
+option(SKIP_KINECT_AZURE "Do not use Kinect Azure cameras" OFF)
 
 
 # DEPENDENCIES #################################################################
@@ -50,6 +50,8 @@ else()
   message(STATUS "OpenVINO headers found at ${OPENVINO_INCLUDE_DIR}")
 endif()
 
+find_package(PCL 1.14 REQUIRED)
+
 include(FetchContent)
 # pugg is for the plugin system
 FetchContent_Declare(pugg 
@@ -71,8 +73,6 @@ FetchContent_Declare(eigen
   GIT_SHALLOW TRUE
 )
 FetchContent_MakeAvailable(pugg json eigen)
-
-
 
 # MACROS #######################################################################
 # Call: add_plugin(name [SRCS src1 src2 ...] [LIBS lib1 lib2 ...])
@@ -142,6 +142,7 @@ list(APPEND COMMON_SOURCES ${SRC_DIR}/args_helper.cpp)
 include_directories(
   ${OpenCV_INCLUDE_DIRS}
   ${OPENVINO_INCLUDE_DIR}
+  ${PCL_INCLUDE_DIRS}
   ${json_SOURCE_DIR}/include
   ${COMMON}/models/include
   ${COMMON}/monitors/include
@@ -154,6 +155,7 @@ if(WIN32)
 endif()
 
 # TARGETS ######################################################################
+link_directories(${PCL_LIBRARY_DIRS})
 
 add_library(common STATIC ${COMMON_SOURCES} ${COMMON_HEADERS})
 
@@ -162,11 +164,12 @@ if(WIN32)
   find_package(k4abt)
 endif()
 
-if(k4a_FOUND AND k4abt_FOUND AND USE_KINECT_AZURE)
-  add_plugin(skeletonizer3D LIBS ${OpenCV_LIBS} k4a::k4a k4a::k4abt Eigen3::Eigen)
+
+if(k4a_FOUND AND k4abt_FOUND AND NOT SKIP_KINECT_AZURE)
+  add_plugin(skeletonizer3D LIBS ${OpenCV_LIBS} ${PCL_LIBRARIES} common openvino::runtime Eigen3::Eigen k4a::k4a k4a::k4abt )
   target_compile_definitions(skeletonizer3D PRIVATE KINECT_AZURE)
 else()
-  add_plugin(skeletonizer3D LIBS common ${OpenCV_LIBS} openvino::runtime Eigen3::Eigen)
+  add_plugin(skeletonizer3D LIBS ${OpenCV_LIBS} ${PCL_LIBRARIES} common openvino::runtime Eigen3::Eigen)
 endif()
 
 add_loader(load_source)
