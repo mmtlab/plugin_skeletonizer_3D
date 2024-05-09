@@ -207,12 +207,12 @@ public:
   void setup_VideoCapture() {
 
 #ifdef KINECT_AZURE
-    k4a_device_configuration_t device_config =
+    _device_config =
         K4A_DEVICE_CONFIG_INIT_DISABLE_ALL;
-    device_config.color_format =
+    _device_config.color_format =
         K4A_IMAGE_FORMAT_COLOR_BGRA32; // <==== For Color image
-    device_config.color_resolution = K4A_COLOR_RESOLUTION_720P;
-    device_config.depth_mode =
+    _device_config.color_resolution = K4A_COLOR_RESOLUTION_720P;
+    _device_config.depth_mode =
         K4A_DEPTH_MODE_NFOV_UNBINNED; // <==== For Depth image
 
     if (_params.contains("azure_device")) {
@@ -223,10 +223,10 @@ public:
     }
 
     _device = k4a::device::open(_azure_device);
-    _device.start_cameras(&device_config);
+    _device.start_cameras(&_device_config);
 
     k4a::calibration sensor_calibration = _device.get_calibration(
-        device_config.depth_mode, device_config.color_resolution);
+        _device_config.depth_mode, _device_config.color_resolution);
     cout << "   Camera calibrated!" << endl;
 
     _pc_transformation = k4a_transformation_create(&sensor_calibration);
@@ -419,25 +419,19 @@ if (dummy) {
    * @return result status ad defined in return_type
    */
   return_type point_cloud_filter(bool debug = false) {
-    cout << "0 - Filtering point cloud..." << endl;
 #ifdef KINECT_AZURE
 
-    cout << "1 - Filtering point cloud..." << endl;
     k4a::image pc = _pc_transformation.depth_image_to_point_cloud(_k4a_rgbd.get_depth_image(), K4A_CALIBRATION_TYPE_DEPTH);
 
-    cout << "2 - Filtering point cloud..." << endl;
     // get raw buffer
     uint8_t* buffer = pc.get_buffer();
     
-    cout << "3 - Filtering point cloud..." << endl;
     // convert the raw buffer to cv::Mat
     int rows = pc.get_height_pixels();
     int cols = pc.get_width_pixels();
     _point_cloud = cv::Mat(rows , cols, CV_16U, (void*)buffer, cv::Mat::AUTO_STEP);
 
 #endif  
-
-    cout << "4 - Filtering point cloud..." << endl;
 
     // Converte la variabile cv::Mat in un point cloud di tipo pcl::PointCloud<pcl::PointXYZ>
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
@@ -456,14 +450,16 @@ if (dummy) {
         }
     }
     
-    cout << "5 - Filtering point cloud..." << endl;
+    cout << "Before viewer - Filtering point cloud..." << endl;
     
-    /*pcl::visualization::PCLVisualizer viewer("Cloud Viewer");
+    /*
+    viewer("Cloud Viewer");
     viewer.addPointCloud<pcl::PointXYZ>(cloud, "cloud");
     viewer.setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_COLOR, 1.0, 0.0, 0.0, "cloud");
-    viewer.spinOnce();*/
+    viewer.spinOnce();
+    */
     
-    cout << "6 - Filtering point cloud..." << endl;
+    cout << "After viewer - Filtering point cloud..." << endl;
     
     // NOOP
     return return_type::success;
@@ -846,12 +842,38 @@ if (dummy) {
         
         Mat rgb_flipped;
         flip(_rgb, rgb_flipped, 1);
-        imshow("Human Pose Estimation Results", _rgb);
+        imshow("Human Pose Estimation Results", rgb_flipped);
         
+        int max_depth;
+    #ifdef KINECT_AZURE
+        // Configure the colormap range based on the depth mode
+        // Values get from: https://docs.microsoft.com/en-us/azure/kinect-dk/hardware-specification
         
+        switch (_device_config.depth_mode)
+        {
+        case K4A_DEPTH_MODE_NFOV_UNBINNED:
+          max_depth = 3860;
+          break;
+        case K4A_DEPTH_MODE_NFOV_2X2BINNED:
+          max_depth = 5460;
+          break;
+        case K4A_DEPTH_MODE_WFOV_UNBINNED:
+          max_depth = 2210;
+          break;
+        case K4A_DEPTH_MODE_WFOV_2X2BINNED:
+          max_depth = 2880;
+          break;
+
+        default:
+          max_depth = 3860;
+          break;
+        }
+    #else
+        max_depth = 2000;
+    #endif
         Mat rgbd_flipped;
         flip(_rgbd, rgbd_flipped, 1);
-        rgbd_flipped.convertTo(rgbd_flipped, CV_8U, 255.0 / 3000); // 2000 is the maximum depth value
+        rgbd_flipped.convertTo(rgbd_flipped, CV_8U, 255.0 / max_depth); // 2000 is the maximum depth value
         Mat rgbd_flipped_color;
         // Apply the colormap:
         applyColorMap(rgbd_flipped, rgbd_flipped_color, COLORMAP_HSV);
@@ -869,8 +891,6 @@ if (dummy) {
 
           return return_type::error;
         }
-        
-        
     }
     
 
@@ -960,7 +980,7 @@ protected:
   k4a::image _depth_image;
   k4a::transformation _pc_transformation; /**< the transformation */
   cv::Mat _pc; /**< the point cloud */
-
+  k4a_device_configuration_t _device_config;
 #endif
   ov::Core _core;
   unique_ptr<ResultBase> _result;
