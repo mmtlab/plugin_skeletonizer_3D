@@ -452,18 +452,28 @@ if (dummy) {
     
     cout << "Before viewer - Filtering point cloud..." << endl;
     
-    /*
-    viewer("Cloud Viewer");
-    viewer.addPointCloud<pcl::PointXYZ>(cloud, "cloud");
-    viewer.setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_COLOR, 1.0, 0.0, 0.0, "cloud");
-    viewer.spinOnce();
-    */
+    pcl::visualization::PCLVisualizer::Ptr viewer;
+    viewer = simpleVis(cloud);
     
     cout << "After viewer - Filtering point cloud..." << endl;
     
     // NOOP
     return return_type::success;
 
+  }
+
+  pcl::visualization::PCLVisualizer::Ptr simpleVis (pcl::PointCloud<pcl::PointXYZ>::ConstPtr cloud)
+  {
+    // --------------------------------------------
+    // -----Open 3D viewer and add point cloud-----
+    // --------------------------------------------
+    pcl::visualization::PCLVisualizer::Ptr viewer (new pcl::visualization::PCLVisualizer ("3D Viewer"));
+    viewer->setBackgroundColor (0, 0, 0);
+    viewer->addPointCloud<pcl::PointXYZ> (cloud, "sample cloud");
+    viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 1, "sample cloud");
+    viewer->addCoordinateSystem (1.0);
+    viewer->initCameraParameters ();
+    return (viewer);
   }
 
   pcl::PointCloud<pcl::PointXYZRGB>::Ptr img_to_cloud(
