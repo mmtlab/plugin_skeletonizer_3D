@@ -39,6 +39,7 @@
 
 #ifdef KINECT_AZURE
 // include Kinect libraries
+#include <k4a/k4a.h>
 #include <k4a/k4a.hpp>
 #include <k4abt.hpp>
 #endif
@@ -46,6 +47,12 @@
 using namespace cv;
 using namespace std;
 using json = nlohmann::json;
+
+struct color_point_t
+{
+    int16_t xyz[3];
+    uint8_t rgb[3];
+};
 
 // Map of OpenPOSE keypoint names
 // TODO: update with Miroscic names
@@ -302,6 +309,130 @@ public:
          << endl;
   }
 
+  #ifdef KINECT_AZURE
+  static void write_point_cloud(const k4a_image_t point_cloud_image,
+                                             const k4a_image_t color_image,
+                                             const char *file_name)
+{
+    std::vector<color_point_t> points;
+
+    int width = k4a_image_get_width_pixels(point_cloud_image);
+    int height = k4a_image_get_height_pixels(color_image);
+
+    int16_t *point_cloud_image_data = (int16_t *)(void *)k4a_image_get_buffer(point_cloud_image);
+    uint8_t *color_image_data = k4a_image_get_buffer(color_image);
+
+    for (int i = 0; i < width * height; i++)
+    {
+        color_point_t point;
+        point.xyz[0] = point_cloud_image_data[3 * i + 0];
+        point.xyz[1] = point_cloud_image_data[3 * i + 1];
+        point.xyz[2] = point_cloud_image_data[3 * i + 2];
+        if (point.xyz[2] == 0)
+        {
+            continue;
+        }
+
+        point.rgb[0] = color_image_data[4 * i + 0];
+        point.rgb[1] = color_image_data[4 * i + 1];
+        point.rgb[2] = color_image_data[4 * i + 2];
+        uint8_t alpha = color_image_data[4 * i + 3];
+
+        if (point.rgb[0] == 0 && point.rgb[1] == 0 && point.rgb[2] == 0 && alpha == 0)
+        {
+            continue;
+        }
+
+        points.push_back(point);
+    }
+
+#define PLY_START_HEADER "ply"
+#define PLY_END_HEADER "end_header"
+#define PLY_ASCII "format ascii 1.0"
+#define PLY_ELEMENT_VERTEX "element vertex"
+
+    // save to the ply file
+    std::ofstream ofs(file_name); // text mode first
+    ofs << PLY_START_HEADER << std::endl;
+    ofs << PLY_ASCII << std::endl;
+    ofs << PLY_ELEMENT_VERTEX << " " << points.size() << std::endl;
+    ofs << "property float x" << std::endl;
+    ofs << "property float y" << std::endl;
+    ofs << "property float z" << std::endl;
+    ofs << "property uchar red" << std::endl;
+    ofs << "property uchar green" << std::endl;
+    ofs << "property uchar blue" << std::endl;
+    ofs << PLY_END_HEADER << std::endl;
+    ofs.close();
+
+    std::stringstream ss;
+    for (size_t i = 0; i < points.size(); ++i)
+    {
+        // image data is BGR
+        ss << (float)points[i].xyz[0] << " " << (float)points[i].xyz[1] << " " << (float)points[i].xyz[2];
+        ss << " " << (float)points[i].rgb[2] << " " << (float)points[i].rgb[1] << " " << (float)points[i].rgb[0];
+        ss << std::endl;
+    }
+    std::ofstream ofs_text(file_name, std::ios::out | std::ios::app);
+    ofs_text.write(ss.str().c_str(), (std::streamsize)ss.str().length());
+}
+
+  static bool point_cloud_color_to_depth(k4a_transformation_t transformation_handle,
+                                       const k4a_image_t depth_image,
+                                       const k4a_image_t color_image,
+                                       std::string file_name)
+{
+    int depth_image_width_pixels = k4a_image_get_width_pixels(depth_image);
+    int depth_image_height_pixels = k4a_image_get_height_pixels(depth_image);
+    k4a_image_t transformed_color_image = NULL;
+    if (K4A_RESULT_SUCCEEDED != k4a_image_create(K4A_IMAGE_FORMAT_COLOR_BGRA32,
+                                                 depth_image_width_pixels,
+                                                 depth_image_height_pixels,
+                                                 depth_image_width_pixels * 4 * (int)sizeof(uint8_t),
+                                                 &transformed_color_image))
+    {
+        printf("Failed to create transformed color image\n");
+        return false;
+    }
+
+    k4a_image_t point_cloud_image = NULL;
+    if (K4A_RESULT_SUCCEEDED != k4a_image_create(K4A_IMAGE_FORMAT_CUSTOM,
+                                                 depth_image_width_pixels,
+                                                 depth_image_height_pixels,
+                                                 depth_image_width_pixels * 3 * (int)sizeof(int16_t),
+                                                 &point_cloud_image))
+    {
+        printf("Failed to create point cloud image\n");
+        return false;
+    }
+
+    if (K4A_RESULT_SUCCEEDED != k4a_transformation_color_image_to_depth_camera(transformation_handle,
+                                                                               depth_image,
+                                                                               color_image,
+                                                                               transformed_color_image))
+    {
+        printf("Failed to compute transformed color image\n");
+        return false;
+    }
+
+    if (K4A_RESULT_SUCCEEDED != k4a_transformation_depth_image_to_point_cloud(transformation_handle,
+                                                                              depth_image,
+                                                                              K4A_CALIBRATION_TYPE_DEPTH,
+                                                                              point_cloud_image))
+    {
+        printf("Failed to compute point cloud\n");
+        return false;
+    }
+
+    write_point_cloud(point_cloud_image, transformed_color_image, file_name.c_str());
+
+    k4a_image_release(transformed_color_image);
+    k4a_image_release(point_cloud_image);
+
+    return true;
+}
+  #endif
+
   /**
    * @brief Acquire a frame from a camera device. Camera ID is defined in the
    * parameters list.
@@ -337,6 +468,8 @@ public:
 
       // acquire and store into _rgb (RGB) and _rgbd (RGBD), if available
       k4a::image colorImage = _k4a_rgbd.get_color_image();
+      k4a_image_t color_handle = colorImage.handle();
+      k4a_image_reference(color_handle);	
 
       // from k4a::image to cv::Mat --> color image
       if (colorImage != NULL)
@@ -353,18 +486,25 @@ public:
       }
 
       k4a::image depthImage = _k4a_rgbd.get_depth_image();
+      k4a_image_t depth_handle = depthImage.handle();
+      k4a_image_reference(depth_handle);	
 
       // from k4a::image to cv::Mat --> depth image
       if (depthImage != NULL)
       {
         // get raw buffer
         uint8_t *buffer = depthImage.get_buffer();
+        cout << "Depth image buffer:" << buffer << endl;
 
         // convert the raw buffer to cv::Mat
         int rows = depthImage.get_height_pixels();
         int cols = depthImage.get_width_pixels();
         _rgbd = cv::Mat(rows, cols, CV_16U, (void *)buffer, cv::Mat::AUTO_STEP);
       }
+
+      point_cloud_color_to_depth(_pc_transformation, depth_handle, color_handle, "test.ply");
+
+
 
 #else
       _cap >> _rgb;
@@ -446,60 +586,7 @@ public:
    */
   return_type point_cloud_filter(bool debug = false)
   {
-#ifdef KINECT_AZURE
-
-    k4a::image pc = _pc_transformation.depth_image_to_point_cloud(_k4a_rgbd.get_depth_image(), K4A_CALIBRATION_TYPE_DEPTH);
-
-    // get raw buffer
-    uint8_t *buffer = pc.get_buffer();
-
-    // convert the raw buffer to cv::Mat
-    int rows = pc.get_height_pixels();
-    int cols = pc.get_width_pixels();
-    _point_cloud = cv::Mat(rows, cols, CV_16U, (void *)buffer, cv::Mat::AUTO_STEP);
-
-#endif
-
-    // Converte la variabile cv::Mat in un point cloud di tipo pcl::PointCloud<pcl::PointXYZ>
-    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
-    cloud->width = _point_cloud.cols;
-    cloud->height = _point_cloud.rows;
-    cloud->points.resize(cloud->width * cloud->height);
-
-    for (int i = 0; i < _point_cloud.rows; ++i)
-    {
-      for (int j = 0; j < _point_cloud.cols; ++j)
-      {
-        const cv::Vec3f &point = _point_cloud.at<cv::Vec3f>(i, j);
-        cloud->points[i * cloud->width + j].x = point[0];
-        cloud->points[i * cloud->width + j].y = point[1];
-        cloud->points[i * cloud->width + j].z = point[2];
-      }
-    }
-
-    cout << "Before viewer - Filtering point cloud..." << endl;
-
-    pcl::visualization::PCLVisualizer::Ptr viewer;
-    viewer = simpleVis(cloud);
-
-    cout << "After viewer - Filtering point cloud..." << endl;
-
-    // NOOP
     return return_type::success;
-  }
-
-  pcl::visualization::PCLVisualizer::Ptr simpleVis(pcl::PointCloud<pcl::PointXYZ>::ConstPtr cloud)
-  {
-    // --------------------------------------------
-    // -----Open 3D viewer and add point cloud-----
-    // --------------------------------------------
-    pcl::visualization::PCLVisualizer::Ptr viewer(new pcl::visualization::PCLVisualizer("3D Viewer"));
-    viewer->setBackgroundColor(0, 0, 0);
-    viewer->addPointCloud<pcl::PointXYZ>(cloud, "sample cloud");
-    viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 1, "sample cloud");
-    viewer->addCoordinateSystem(1.0);
-    viewer->initCameraParameters();
-    return (viewer);
   }
 
   /**
@@ -852,7 +939,7 @@ public:
 
     acquire_frame(_dummy);
     skeleton_from_depth_compute(_params["debug"]["skeleton_from_depth_compute"]);
-    // point_cloud_filter(_params["debug"]["point_cloud_filter"]);
+    point_cloud_filter(_params["debug"]["point_cloud_filter"]);
     skeleton_from_rgb_compute(_params["debug"]["skeleton_from_rgb_compute"]);
 
     if (!(_result))
@@ -903,9 +990,9 @@ public:
       Mat rgbd_flipped_color;
       applyColorMap(rgbd_flipped, rgbd_flipped_color, COLORMAP_HSV); // Apply the colormap:
       imshow("rgbd", rgbd_flipped_color);
-
+      
       int key = cv::waitKey(1000.0 / _fps);
-
+      system("pause");
       if (27 == key || 'q' == key || 'Q' == key)
       { // Esc
 #ifdef KINECT_AZURE
@@ -1008,7 +1095,7 @@ protected:
   k4a::capture _k4a_rgbd; /**< the last capture */
   k4a::image _depth_image;
   k4abt::frame _body_frame;
-  k4a::transformation _pc_transformation; /**< the transformation */
+  k4a_transformation_t _pc_transformation; /**< the transformation */
 
 #endif
   ov::Core _core;
