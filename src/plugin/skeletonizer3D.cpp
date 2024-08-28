@@ -485,25 +485,25 @@ public:
         //_rgb.convertTo(_rgb, CV_8UC3);
       }
 
-      k4a::image depthImage = _k4a_rgbd.get_depth_image();
-      k4a_image_t depth_handle = depthImage.handle();
+      _depth_image = _k4a_rgbd.get_depth_image();
+      k4a_image_t depth_handle = _depth_image.handle();
       k4a_image_reference(depth_handle);	
 
       // from k4a::image to cv::Mat --> depth image
-      if (depthImage != NULL)
+      if (_depth_image != NULL)
       {
         // get raw buffer
-        uint8_t *buffer = depthImage.get_buffer();
+        uint8_t *buffer = _depth_image.get_buffer();
         cout << "Depth image buffer:" << buffer << endl;
 
         // convert the raw buffer to cv::Mat
-        int rows = depthImage.get_height_pixels();
-        int cols = depthImage.get_width_pixels();
+        int rows = _depth_image.get_height_pixels();
+        int cols = _depth_image.get_width_pixels();
         _rgbd = cv::Mat(rows, cols, CV_16U, (void *)buffer, cv::Mat::AUTO_STEP);
       }
 
-      point_cloud_color_to_depth(_pc_transformation, depth_handle, color_handle, "test.ply");
-
+      // Debug function to save the point cloud in a .ply file
+      //point_cloud_color_to_depth(_pc_transformation, depth_handle, color_handle, "../plugin_skeletonizer_3D/test.ply");
 
 
 #else
@@ -586,8 +586,88 @@ public:
    */
   return_type point_cloud_filter(bool debug = false)
   {
+
+#ifdef KINECT_AZURE
+    // get the body index map from _k4a_rgbd
+
+    // TODO: _body_frame is obtained in the skeleton_from_depth_compute method! We don't like this dependency
+    // Retrieve the body tracking result
+
+    if (_body_frame != nullptr)
+    {
+      k4a::image body_index_map = _body_frame.get_body_index_map();
+
+
+      // mask the depth image with the body index map
+      k4a::image masked_depth_image = k4a::image::create(K4A_IMAGE_FORMAT_DEPTH16,
+                                                          _depth_image.get_width_pixels(), _depth_image.get_height_pixels(),
+                                                          _depth_image.get_stride_bytes());
+      
+      mask_depth_with_body_index(_depth_image, body_index_map, masked_depth_image);
+
+      k4a_image_t masked_depth_handle = masked_depth_image.handle();
+      k4a_image_reference(masked_depth_handle);	
+
+      // from k4a::image to cv::Mat --> depth image
+      if (masked_depth_image != NULL)
+      {
+        // get raw buffer
+        uint8_t *buffer = masked_depth_image.get_buffer();
+        cout << "Depth image buffer:" << buffer << endl;
+
+        // convert the raw buffer to cv::Mat
+        int rows = masked_depth_image.get_height_pixels();
+        int cols = masked_depth_image.get_width_pixels();
+        _rgbd_filtered = cv::Mat(rows, cols, CV_16U, (void *)buffer, cv::Mat::AUTO_STEP);
+      }
+
+      // convert the depth image to a point cloud
+      k4a::image colorImage = _k4a_rgbd.get_color_image();
+      k4a_image_t color_handle = colorImage.handle();
+      k4a_image_reference(color_handle);
+
+      point_cloud_color_to_depth(_pc_transformation, masked_depth_handle, color_handle, "../plugin_skeletonizer_3D/test.ply");
+
+    }
+    else
+    {
+      cout << "No body frame detected!" << endl;
+    }
+    
+#endif
+
     return return_type::success;
   }
+
+#ifdef KINECT_AZURE
+  void mask_depth_with_body_index(const k4a::image &depth_image, const k4a::image &body_index_map, k4a::image &masked_depth_image) {
+      // Get image dimensions
+      int width = depth_image.get_width_pixels();
+      int height = depth_image.get_height_pixels();
+
+      // Get pointers to the image data
+      const uint16_t* depth_data = reinterpret_cast<const uint16_t*>(depth_image.get_buffer());
+      const uint8_t* body_index_data = reinterpret_cast<const uint8_t*>(body_index_map.get_buffer());
+      uint16_t* masked_depth_data = reinterpret_cast<uint16_t*>(masked_depth_image.get_buffer());
+
+      // Iterate over each pixel
+      for (int y = 0; y < height; y++) {
+          for (int x = 0; x < width; x++) {
+              int idx = y * width + x;
+
+              // Check if the pixel belongs to a body
+              if (body_index_data[idx] != K4ABT_BODY_INDEX_MAP_BACKGROUND) {
+                  // Copy the depth value
+                  masked_depth_data[idx] = depth_data[idx];
+              } else {
+                  // Set to zero or any background value (e.g., 0 for no depth)
+                  masked_depth_data[idx] = 0;
+              }
+          }
+      }
+      
+  }
+#endif
 
   /**
    * @brief Transform the 3D skeleton coordinates in the global reference frame
@@ -938,8 +1018,8 @@ public:
     (*out)["agent_id"] = _agent_id;
 
     acquire_frame(_dummy);
-    //skeleton_from_depth_compute(_params["debug"]["skeleton_from_depth_compute"]);
-    //point_cloud_filter(_params["debug"]["point_cloud_filter"]);
+    skeleton_from_depth_compute(_params["debug"]["skeleton_from_depth_compute"]);
+    point_cloud_filter(_params["debug"]["point_cloud_filter"]);
     skeleton_from_rgb_compute(_params["debug"]["skeleton_from_rgb_compute"]);
 
     if (!(_result))
@@ -985,7 +1065,8 @@ public:
 #endif
 
       Mat rgbd_flipped;
-      flip(_rgbd, rgbd_flipped, 1);
+      //flip(_rgbd, rgbd_flipped, 1);
+      flip(_rgbd_filtered, rgbd_flipped, 1);
       rgbd_flipped.convertTo(rgbd_flipped, CV_8U, 255.0 / max_depth);
       Mat rgbd_flipped_color;
       applyColorMap(rgbd_flipped, rgbd_flipped_color, COLORMAP_HSV); // Apply the colormap:
@@ -1053,6 +1134,7 @@ public:
 protected:
   Mat _rgbd; /**< the last RGBD frame */
   Mat _rgb;  /**< the last RGB frame */
+  Mat _rgbd_filtered; /**< the last RGBD frame */
   map<string, vector<unsigned char>>
       _skeleton2D; /**< the skeleton from 2D cameras only*/
   map<string, vector<unsigned char>>
