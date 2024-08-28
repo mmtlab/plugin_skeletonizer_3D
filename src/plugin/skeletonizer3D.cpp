@@ -310,17 +310,59 @@ public:
   }
 
   #ifdef KINECT_AZURE
-  static void write_point_cloud(const k4a_image_t point_cloud_image,
-                                             const k4a_image_t color_image,
-                                             const char *file_name)
+  return_type create_point_cloud(k4a_transformation_t transformation_handle,
+                                       const k4a_image_t depth_image,
+                                       const k4a_image_t color_image)
 {
+    int depth_image_width_pixels = k4a_image_get_width_pixels(depth_image);
+    int depth_image_height_pixels = k4a_image_get_height_pixels(depth_image);
+    k4a_image_t transformed_color_image = NULL;
+    if (K4A_RESULT_SUCCEEDED != k4a_image_create(K4A_IMAGE_FORMAT_COLOR_BGRA32,
+                                                 depth_image_width_pixels,
+                                                 depth_image_height_pixels,
+                                                 depth_image_width_pixels * 4 * (int)sizeof(uint8_t),
+                                                 &transformed_color_image))
+    {
+        printf("Failed to create transformed color image\n");
+        return return_type::error;
+    }
+
+    k4a_image_t point_cloud_image = NULL;
+    if (K4A_RESULT_SUCCEEDED != k4a_image_create(K4A_IMAGE_FORMAT_CUSTOM,
+                                                 depth_image_width_pixels,
+                                                 depth_image_height_pixels,
+                                                 depth_image_width_pixels * 3 * (int)sizeof(int16_t),
+                                                 &point_cloud_image))
+    {
+        printf("Failed to create point cloud image\n");
+        return return_type::error;
+    }
+
+    if (K4A_RESULT_SUCCEEDED != k4a_transformation_color_image_to_depth_camera(transformation_handle,
+                                                                               depth_image,
+                                                                               color_image,
+                                                                               transformed_color_image))
+    {
+        printf("Failed to compute transformed color image\n");
+        return return_type::error;
+    }
+
+    if (K4A_RESULT_SUCCEEDED != k4a_transformation_depth_image_to_point_cloud(transformation_handle,
+                                                                              depth_image,
+                                                                              K4A_CALIBRATION_TYPE_DEPTH,
+                                                                              point_cloud_image))
+    {
+        printf("Failed to compute point cloud\n");
+        return return_type::error;
+    }
+
     std::vector<color_point_t> points;
 
     int width = k4a_image_get_width_pixels(point_cloud_image);
-    int height = k4a_image_get_height_pixels(color_image);
+    int height = k4a_image_get_height_pixels(transformed_color_image);
 
     int16_t *point_cloud_image_data = (int16_t *)(void *)k4a_image_get_buffer(point_cloud_image);
-    uint8_t *color_image_data = k4a_image_get_buffer(color_image);
+    uint8_t *color_image_data = k4a_image_get_buffer(transformed_color_image);
 
     for (int i = 0; i < width * height; i++)
     {
@@ -345,6 +387,63 @@ public:
 
         points.push_back(point);
     }
+
+    // convert the points to a point cloud of Mat type
+    _point_cloud = cv::Mat(points.size(), 6, CV_32F);
+    for (size_t i = 0; i < points.size(); i++)
+    {
+        _point_cloud.at<float>(i, 0) = points[i].xyz[0];
+        _point_cloud.at<float>(i, 1) = points[i].xyz[1];
+        _point_cloud.at<float>(i, 2) = points[i].xyz[2];
+        _point_cloud.at<float>(i, 3) = points[i].rgb[2];
+        _point_cloud.at<float>(i, 4) = points[i].rgb[1];
+        _point_cloud.at<float>(i, 5) = points[i].rgb[0];
+    }
+    
+
+    // Save the point cloud to a ply file
+    //write_ply_from_points_vector(points, "../plugin_skeletonizer_3D/test_points.ply");
+    //write_ply_from_cv_mat(_point_cloud, "../plugin_skeletonizer_3D/test_cv_mat.ply");
+
+    return return_type::success;
+}
+
+// Write the point cloud to a ply file
+void write_ply_from_cv_mat(cv::Mat point_cloud, const char *file_name){
+
+#define PLY_START_HEADER "ply"
+#define PLY_END_HEADER "end_header"
+#define PLY_ASCII "format ascii 1.0"
+#define PLY_ELEMENT_VERTEX "element vertex"
+
+    // save to the ply file
+    std::ofstream ofs(file_name); // text mode first
+    ofs << PLY_START_HEADER << std::endl;
+    ofs << PLY_ASCII << std::endl;
+    ofs << PLY_ELEMENT_VERTEX << " " << point_cloud.rows << std::endl;
+    ofs << "property float x" << std::endl;
+    ofs << "property float y" << std::endl;
+    ofs << "property float z" << std::endl;
+    ofs << "property uchar red" << std::endl;
+    ofs << "property uchar green" << std::endl;
+    ofs << "property uchar blue" << std::endl;
+    ofs << PLY_END_HEADER << std::endl;
+    ofs.close();
+
+    std::stringstream ss;
+    for (int i = 0; i < point_cloud.rows; ++i)
+    {
+      ss << point_cloud.at<float>(i, 0) << " " << point_cloud.at<float>(i, 1) << " " << point_cloud.at<float>(i, 2);
+      ss << " " << point_cloud.at<float>(i, 3) << " " << point_cloud.at<float>(i, 4) << " " << point_cloud.at<float>(i, 5);
+      ss << std::endl;
+    }
+    std::ofstream ofs_text(file_name, std::ios::out | std::ios::app);
+    ofs_text.write(ss.str().c_str(), (std::streamsize)ss.str().length());
+}
+
+// Write the point cloud to a ply file
+static void write_ply_from_points_vector(std::vector<color_point_t> points,
+                                             const char *file_name){
 
 #define PLY_START_HEADER "ply"
 #define PLY_END_HEADER "end_header"
@@ -377,60 +476,6 @@ public:
     ofs_text.write(ss.str().c_str(), (std::streamsize)ss.str().length());
 }
 
-  static bool point_cloud_color_to_depth(k4a_transformation_t transformation_handle,
-                                       const k4a_image_t depth_image,
-                                       const k4a_image_t color_image,
-                                       std::string file_name)
-{
-    int depth_image_width_pixels = k4a_image_get_width_pixels(depth_image);
-    int depth_image_height_pixels = k4a_image_get_height_pixels(depth_image);
-    k4a_image_t transformed_color_image = NULL;
-    if (K4A_RESULT_SUCCEEDED != k4a_image_create(K4A_IMAGE_FORMAT_COLOR_BGRA32,
-                                                 depth_image_width_pixels,
-                                                 depth_image_height_pixels,
-                                                 depth_image_width_pixels * 4 * (int)sizeof(uint8_t),
-                                                 &transformed_color_image))
-    {
-        printf("Failed to create transformed color image\n");
-        return false;
-    }
-
-    k4a_image_t point_cloud_image = NULL;
-    if (K4A_RESULT_SUCCEEDED != k4a_image_create(K4A_IMAGE_FORMAT_CUSTOM,
-                                                 depth_image_width_pixels,
-                                                 depth_image_height_pixels,
-                                                 depth_image_width_pixels * 3 * (int)sizeof(int16_t),
-                                                 &point_cloud_image))
-    {
-        printf("Failed to create point cloud image\n");
-        return false;
-    }
-
-    if (K4A_RESULT_SUCCEEDED != k4a_transformation_color_image_to_depth_camera(transformation_handle,
-                                                                               depth_image,
-                                                                               color_image,
-                                                                               transformed_color_image))
-    {
-        printf("Failed to compute transformed color image\n");
-        return false;
-    }
-
-    if (K4A_RESULT_SUCCEEDED != k4a_transformation_depth_image_to_point_cloud(transformation_handle,
-                                                                              depth_image,
-                                                                              K4A_CALIBRATION_TYPE_DEPTH,
-                                                                              point_cloud_image))
-    {
-        printf("Failed to compute point cloud\n");
-        return false;
-    }
-
-    write_point_cloud(point_cloud_image, transformed_color_image, file_name.c_str());
-
-    k4a_image_release(transformed_color_image);
-    k4a_image_release(point_cloud_image);
-
-    return true;
-}
   #endif
 
   /**
@@ -494,7 +539,6 @@ public:
       {
         // get raw buffer
         uint8_t *buffer = _depth_image.get_buffer();
-        cout << "Depth image buffer:" << buffer << endl;
 
         // convert the raw buffer to cv::Mat
         int rows = _depth_image.get_height_pixels();
@@ -626,7 +670,7 @@ public:
       k4a_image_t color_handle = colorImage.handle();
       k4a_image_reference(color_handle);
 
-      point_cloud_color_to_depth(_pc_transformation, masked_depth_handle, color_handle, "../plugin_skeletonizer_3D/test.ply");
+      create_point_cloud(_pc_transformation, masked_depth_handle, color_handle);
 
     }
     else
@@ -1063,9 +1107,8 @@ public:
 #else
       max_depth = 2000;
 #endif
-
+      
       Mat rgbd_flipped;
-      //flip(_rgbd, rgbd_flipped, 1);
       flip(_rgbd_filtered, rgbd_flipped, 1);
       rgbd_flipped.convertTo(rgbd_flipped, CV_8U, 255.0 / max_depth);
       Mat rgbd_flipped_color;
@@ -1073,7 +1116,7 @@ public:
       imshow("rgbd", rgbd_flipped_color);
       
       int key = cv::waitKey(1000.0 / _fps);
-      system("pause");
+      //system("pause");
       if (27 == key || 'q' == key || 'Q' == key)
       { // Esc
 #ifdef KINECT_AZURE
