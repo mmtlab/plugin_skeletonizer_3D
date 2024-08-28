@@ -938,8 +938,8 @@ public:
     (*out)["agent_id"] = _agent_id;
 
     acquire_frame(_dummy);
-    skeleton_from_depth_compute(_params["debug"]["skeleton_from_depth_compute"]);
-    point_cloud_filter(_params["debug"]["point_cloud_filter"]);
+    //skeleton_from_depth_compute(_params["debug"]["skeleton_from_depth_compute"]);
+    //point_cloud_filter(_params["debug"]["point_cloud_filter"]);
     skeleton_from_rgb_compute(_params["debug"]["skeleton_from_rgb_compute"]);
 
     if (!(_result))
