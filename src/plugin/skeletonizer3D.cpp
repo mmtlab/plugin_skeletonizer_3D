@@ -57,7 +57,10 @@ struct color_point_t
 // Map of OpenPOSE keypoint names
 // TODO: update with Miroscic names
 map<int, string> keypoints_map = {
-    {0, "NOS_"}, {1, "NEC_"}, {2, "SHOR"}, {3, "ELBR"}, {4, "WRIR"}, {5, "SHOL"}, {6, "ELBL"}, {7, "WRIL"}, {8, "HIPR"}, {9, "KNER"}, {10, "ANKR"}, {11, "HIPL"}, {12, "KNEL"}, {13, "ANKL"}, {14, "EYEL"}, {15, "EYEL"}, {16, "EARR"}, {17, "EARL"}};
+    {0, "NOS_"}, {1, "NEC_"}, {2, "SHOR"}, {3, "ELBR"}, {4, "WRIR"}, {5, "SHOL"}, {6, "ELBL"}, {7, "WRIL"}, {8, "HIPR"}, {9, "KNER"}, {10, "ANKR"}, {11, "HIPL"}, {12, "KNEL"}, {13, "ANKL"}, {14, "EYER"}, {15, "EYEL"}, {16, "EARR"}, {17, "EARL"}};
+
+map<int, string> keypoints_map_azure = {
+    {27, "NOS_"}, {3, "NEC_"}, {12, "SHOR"}, {13, "ELBR"}, {14, "WRIR"}, {5, "SHOL"}, {6, "ELBL"}, {7, "WRIL"}, {22, "HIPR"}, {23, "KNER"}, {24, "ANKR"}, {18, "HIPL"}, {19, "KNEL"}, {20, "ANKL"}, {30, "EYER"}, {28, "EYEL"}, {31, "EARR"}, {29, "EARL"}};
 
 /**
  * @class Skeletonizer3D
@@ -567,7 +570,7 @@ static void write_ply_from_points_vector(std::vector<color_point_t> points,
   }
 
   /* LEFT BRANCH =============================================================*/
-
+  
   /**
    * @brief Compute the skeleton from the depth map.
    *
@@ -590,20 +593,24 @@ static void write_ply_from_points_vector(std::vector<color_point_t> points,
 
     _body_frame = _tracker.pop_result();
     if (_body_frame != nullptr)
-    {
-      uint32_t num_bodies = _body_frame.get_num_bodies();
-      std::cout << num_bodies << " bodies are detected!" << endl;
+    {      
+      // Only take one body (always the first one)
+      k4abt_body_t body = _body_frame.get_body(0);
+
+      json frame_result_json;
+
+      for (const auto& [index, keypoint_name] : keypoints_map_azure)
+      {
+        k4a_float3_t position = body.skeleton.joints[index].position;
+        k4abt_joint_confidence_level_t confidence_level = body.skeleton.joints[index].confidence_level;
+
+        frame_result_json["poses"][keypoint_name] = { position.v[0], position.v[1], position.v[2] };
+        frame_result_json["cov"][keypoint_name] = { confidence_level };
+      }
 
       if (debug)
-      {
-
-        // Print the body information
-        for (uint32_t i = 0; i < num_bodies; i++)
-        {
-          k4abt_body_t body = _body_frame.get_body(i);
-          // print_body_information(body);
-        }
-      }
+        cout << frame_result_json.dump(4) << endl;
+        
     }
     else
     {
