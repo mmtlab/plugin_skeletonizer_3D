@@ -677,6 +677,7 @@ static void write_ply_from_points_vector(std::vector<color_point_t> points,
       k4a_image_t color_handle = colorImage.handle();
       k4a_image_reference(color_handle);
 
+      // create the point cloud and save it in _point_cloud variable
       create_point_cloud(_pc_transformation, masked_depth_handle, color_handle);
 
     }
@@ -1184,7 +1185,7 @@ static void write_ply_from_points_vector(std::vector<color_point_t> points,
 protected:
   Mat _rgbd; /**< the last RGBD frame */
   Mat _rgb;  /**< the last RGB frame */
-  Mat _rgbd_filtered; /**< the last RGBD frame */
+  Mat _rgbd_filtered; /**< the last RGBD frame filtered with the body index mask*/
   map<string, vector<unsigned char>>
       _skeleton2D; /**< the skeleton from 2D cameras only*/
   map<string, vector<unsigned char>>
