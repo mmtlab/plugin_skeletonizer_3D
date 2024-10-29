@@ -597,19 +597,38 @@ static void write_ply_from_points_vector(std::vector<color_point_t> points,
       // Only take one body (always the first one)
       k4abt_body_t body = _body_frame.get_body(0);
 
-      json frame_result_json;
-
+      _skeleton3D.clear();
       for (const auto& [index, keypoint_name] : keypoints_map_azure)
       {
         k4a_float3_t position = body.skeleton.joints[index].position;
-        k4abt_joint_confidence_level_t confidence_level = body.skeleton.joints[index].confidence_level;
 
-        frame_result_json["poses"][keypoint_name] = { position.v[0], position.v[1], position.v[2] };
-        frame_result_json["cov"][keypoint_name] = { confidence_level };
+        vector<float> keypoint_data;
+        keypoint_data.push_back(static_cast<float>(position.v[0]));
+        keypoint_data.push_back(static_cast<float>(position.v[1]));
+        keypoint_data.push_back(static_cast<float>(position.v[2]));
+
+        _skeleton3D[keypoint_name] = keypoint_data;
       }
-
+      
+      /*
       if (debug)
-        cout << frame_result_json.dump(4) << endl;
+      {
+        cout << "\nSkeleton 3D:" << endl;
+        for (const auto& [keypoint_name, keypoint_data] : _skeleton3D)
+        {
+          cout << keypoint_name << ": (";
+          for (size_t i = 0; i < keypoint_data.size(); ++i)
+          {
+            cout << static_cast<int>(keypoint_data[i]);
+            if (i < keypoint_data.size() - 1)
+            {
+              cout << ", ";
+            }
+          }
+          cout << ")" << endl;
+        }
+      }
+      */
         
     }
     else
@@ -664,7 +683,6 @@ static void write_ply_from_points_vector(std::vector<color_point_t> points,
       {
         // get raw buffer
         uint8_t *buffer = masked_depth_image.get_buffer();
-        cout << "Depth image buffer:" << buffer << endl;
 
         // convert the raw buffer to cv::Mat
         int rows = masked_depth_image.get_height_pixels();
@@ -1138,18 +1156,39 @@ static void write_ply_from_points_vector(std::vector<color_point_t> points,
       }
     }
 
-    // Prepare output
-
+    /*
+    // Prepare output of the keypoints in the 2D space from _keypoints_list
     if (_poses.size() > 0)
     {
       for (int kp = 0; kp < HPEOpenPose::keypointsNumber; kp++)
       {
         if (_keypoints_list[kp].x < 0 || _keypoints_list[kp].y < 0)
           continue;
-        (*out)["poses"][keypoints_map[kp]] = {_keypoints_list[kp].x,
-                                              _keypoints_list[kp].y};
+        (*out)["poses"][keypoints_map[kp]] = {_keypoints_list[kp].x,_keypoints_list[kp].y};
         (*out)["cov"][keypoints_map[kp]] = {
             _keypoints_cov[kp].x, _keypoints_cov[kp].y, _keypoints_cov[kp].z};
+      }
+    }
+    */
+
+    // Prepare the output of the poses in the 3D space from _skeleton3D
+    if (_skeleton3D.size() > 0)
+    {
+      for (const auto &[keypoint_name, keypoint_data] : _skeleton3D)
+      {
+        (*out)["poses"][keypoint_name] = keypoint_data;
+      }
+    }
+
+    // print output
+    cout << "Output: " << out->dump(4) << endl;
+
+    // Prepare the output of the point cloud as blob to add to out
+    if (!_point_cloud.empty()) {
+      vector<unsigned char> point_cloud_blob;
+      point_cloud_blob.assign((unsigned char*)_point_cloud.datastart, (unsigned char*)_point_cloud.dataend);
+      if (blob) {
+      *blob = point_cloud_blob;
       }
     }
 
@@ -1186,9 +1225,9 @@ protected:
   Mat _rgbd; /**< the last RGBD frame */
   Mat _rgb;  /**< the last RGB frame */
   Mat _rgbd_filtered; /**< the last RGBD frame filtered with the body index mask*/
-  map<string, vector<unsigned char>>
+  map<string, vector<float>>
       _skeleton2D; /**< the skeleton from 2D cameras only*/
-  map<string, vector<unsigned char>>
+  map<string, vector<float>>
       _skeleton3D;       /**< the skeleton from 3D cameras only*/
   vector<Mat> _heatmaps; /**< the joints heatmaps */
   Mat _point_cloud;      /**< the filtered body point cloud */
